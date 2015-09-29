@@ -101,8 +101,8 @@ def load_word_vecs(token_list, glove, dim):
     return np.array([load_word_vec(x, glove, dim) for x in token_list])        
         
     
-#train, dev, test = load_all_snli_datasets('E:\\Janez\\Data\\snli_1.0\\')
-#glove = import_glove('E:\\Janez\\Data\\snli_vectors.txt')
+#train, dev, test = load_all_snli_datasets('data\\snli_1.0\\')
+#glove = import_glove('data\\snli_vectors.txt')
 
 #X_train, y_train = prepare_vec_dataset(train, glove)
 #X_dev, y_dev = prepare_vec_dataset(dev, glove)
