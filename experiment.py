@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+q# -*- coding: utf-8 -*-
 """
 Created on Mon Sep 28 13:43:55 2015
 
@@ -47,6 +47,11 @@ def pad_sequences(sequences, maxlen=None, dim=1, dtype='float32',
 train, dev, test = load_data.load_all_snli_datasets('data/snli_1.0/')
 glove = load_data.import_glove('data/snli_vectors.txt')
 
+#X_dev, y_dev = load_data.prepare_vec_dataset(dev, glove)
+#X_padded = pad_sequences(X_dev, dim = 50)
+
+X_train, y_train = load_data.prepare_vec_dataset(train, glove)
+X_padded = pad_sequences(X_train, dim = 50)
 
 model = Sequential()
 model.add(LSTM(X_padded.shape[2], 128))
@@ -57,5 +62,4 @@ model.compile(loss='categorical_crossentropy', optimizer='adam')
 
 print "Compiled"
 
-X_padded = pad_sequences(X_dev, dim = 50)
-model.fit(X_padded, y_dev, nb_epoch=20, validation_split=0.1, show_accuracy=True)
+model.fit(X_padded, y_train, nb_epoch=20, validation_split=0.1, show_accuracy=True)
