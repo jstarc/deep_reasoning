@@ -44,7 +44,8 @@ def pad_sequences(sequences, maxlen=None, dim=1, dtype='float32',
     return x
     
 
-     
+train, dev, test = load_data.load_all_snli_datasets('data/snli_1.0/')
+glove = load_data.import_glove('data/snli_vectors.txt')
 
 
 model = Sequential()
