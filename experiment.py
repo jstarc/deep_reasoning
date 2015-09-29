@@ -4,6 +4,7 @@ Created on Mon Sep 28 13:43:55 2015
 
 @author: Janez
 """
+import load_data
 import numpy as np
 
 from keras.models import Sequential
@@ -43,8 +44,7 @@ def pad_sequences(sequences, maxlen=None, dim=1, dtype='float32',
     return x
     
 
-    
-    
+     
 
 
 model = Sequential()
