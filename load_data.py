@@ -95,7 +95,9 @@ def prepare_vec_dataset(dataset, glove):
     return np.array(X), one_hot_y
     
 def load_word_vec(token, glove, dim = 50):
-    return glove[token] if token in glove else np.random.uniform(-0.05, 0.05, dim)
+    if token not in glove:
+	glove[token] = np.random.uniform(-0.05, 0.05, dim)    
+    return glove[token]
     
 def load_word_vecs(token_list, glove, dim):
     return np.array([load_word_vec(x, glove, dim) for x in token_list])        
