@@ -1,4 +1,4 @@
-q# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """
 Created on Mon Sep 28 13:43:55 2015
 
@@ -44,17 +44,17 @@ def pad_sequences(sequences, maxlen=None, dim=1, dtype='float32',
     return x
     
 
-train, dev, test = load_data.load_all_snli_datasets('data/snli_1.0/')
-glove = load_data.import_glove('data/snli_vectors.txt')
+#train, dev, test = load_data.load_all_snli_datasets('data/snli_1.0/')
+#glove = load_data.import_glove('data/snli_vectors.txt')
 
 #X_dev, y_dev = load_data.prepare_vec_dataset(dev, glove)
 #X_padded = pad_sequences(X_dev, dim = 50)
 
-X_train, y_train = load_data.prepare_vec_dataset(train, glove)
-X_padded = pad_sequences(X_train, dim = 50)
+#X_train, y_train = load_data.prepare_vec_dataset(train, glove)
+#X_padded = pad_sequences(X_train, dim = 50)
 
 model = Sequential()
-model.add(LSTM(X_padded.shape[2], 128))
+model.add(LSTM(50, 128))
 model.add(Dropout(0.2))
 model.add(Dense(128, 3))
 model.add(Activation('softmax'))
@@ -62,4 +62,9 @@ model.compile(loss='categorical_crossentropy', optimizer='adam')
 
 print "Compiled"
 
-model.fit(X_padded, y_train, nb_epoch=20, validation_split=0.1, show_accuracy=True)
+for i in np.arange(len(X_train)):
+    model.train_on_batch(np.expand_dims(X_train[i], axis=0), np.expand_dims(y_train[i], axis=0))
+    if i % 1000 == 0:
+	print i 
+
+#model.fit(X_padded, y_train, nb_epoch=20, validation_split=0.1, show_accuracy=True)
