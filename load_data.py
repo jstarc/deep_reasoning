@@ -37,12 +37,14 @@ def import_snli_file(filename):
             data.append(json.loads(line))
     return data
     
-def prepare_snli_dataset(json_data):
+def prepare_snli_dataset(json_data, exclude_undecided = True):
     dataset = []
     for example in json_data:
-       sent1 = tokenize_from_parse_tree(example['sentence1_binary_parse'])
-       sent2 = tokenize_from_parse_tree(example['sentence2_binary_parse'])
-       dataset.append((sent1, sent2, example['gold_label']))
+        sent1 = tokenize_from_parse_tree(example['sentence1_binary_parse'])
+        sent2 = tokenize_from_parse_tree(example['sentence2_binary_parse'])
+        gold = example['gold_label']
+	if not excluded_undecided or gold in LABEL_LIST:
+             dataset.append((sent1, sent2, gold]))
     return dataset
     
 def tokenize_from_parse_tree(parse_tree):
