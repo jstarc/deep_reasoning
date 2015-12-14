@@ -43,8 +43,8 @@ def prepare_snli_dataset(json_data, exclude_undecided = True):
         sent1 = tokenize_from_parse_tree(example['sentence1_binary_parse'])
         sent2 = tokenize_from_parse_tree(example['sentence2_binary_parse'])
         gold = example['gold_label']
-	if not excluded_undecided or gold in LABEL_LIST:
-             dataset.append((sent1, sent2, gold]))
+	if not exclude_undecided or gold in LABEL_LIST:
+            dataset.append((sent1, sent2, gold))
     return dataset
     
 def tokenize_from_parse_tree(parse_tree):
@@ -90,19 +90,19 @@ def prepare_vec_dataset(dataset, glove):
         if example[2] == '-':
             continue
         concat = example[0] + ["--"] + example[1]
-        X.append(load_word_vecs(concat, glove, 50))
+        X.append(load_word_vecs(concat, glove))
         y.append(LABEL_LIST.index(example[2]))
     one_hot_y = np.zeros((len(y), len(LABEL_LIST)))
     one_hot_y[np.arange(len(y)), y] = 1
     return np.array(X), one_hot_y
     
-def load_word_vec(token, glove, dim = 50):
+def load_word_vec(token, glove):
     if token not in glove:
-	glove[token] = np.random.uniform(-0.05, 0.05, dim)    
+	glove[token] = np.random.uniform(-0.05, 0.05, len(glove.values()[0]))    
     return glove[token]
     
-def load_word_vecs(token_list, glove, dim):
-    return np.array([load_word_vec(x, glove, dim) for x in token_list])        
+def load_word_vecs(token_list, glove):
+    return np.array([load_word_vec(x, glove) for x in token_list])        
         
 def pad_sequences(sequences, maxlen=None, dim=1, dtype='float32',
     padding='pre', truncating='pre', value=0.):
