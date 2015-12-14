@@ -20,11 +20,10 @@ from keras.utils.generic_utils import Progbar
 
 
 
-#train, dev, test = load_data.load_all_snli_datasets('data/snli_1.0/')
-#glove = load_data.import_glove('data/snli_vectors_300.txt')
+train, dev, test = load_data.load_all_snli_datasets('data/snli_1.0/')
+glove = load_data.import_glove('data/snli_vectors_300.txt')
 
-#X_dev, y_dev = load_data.prepare_vec_dataset(dev, glove)
-#X_train, y_train = load_data.prepare_vec_dataset(train, glove)
+X_dev, y_dev = load_data.prepare_vec_dataset(dev, glove)
 
 
 EMBED_SIZE = 300
@@ -68,8 +67,8 @@ for e in range(nb_epochs):
 	best_acc = acc
     else:
 	break
-    open(curr_model + '.json', 'w').write(json_string)
-    model.save_weights(curr_model + '.h5')
+    open(model_filename + str(e) + '.json', 'w').write(model.to_json())
+    model.save_weights(model_filename + str(e) + '.h5')
 
      
 
