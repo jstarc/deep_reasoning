@@ -29,10 +29,12 @@ from keras.utils.generic_utils import Progbar
 
 EMBED_SIZE = 300
 HIDDEN_SIZE = 100
+model_filename = 'models/curr_model'
 
 
 model = Sequential()
-model.add(LSTM(HIDDEN_SIZE, input_dim = EMBED_SIZE))
+model.add(Masking(mask_value=0, input_shape = (None, EMBED_SIZE)))
+model.add(LSTM(HIDDEN_SIZE))
 model.add(Dropout(0.2))
 model.add(Dense(3))
 model.add(Activation('softmax'))
@@ -66,6 +68,8 @@ for e in range(nb_epochs):
 	best_acc = acc
     else:
 	break
+    open(curr_model + '.json', 'w').write(json_string)
+    model.save_weights(curr_model + '.h5')
 
      
 
