@@ -27,13 +27,16 @@ if __name__ == "__main__":
     glove = load_data.import_glove('data/snli_vectors_300.txt')
 
 
-def grid_experiments():
+def grid_experiments(train, dev, glove, embed_size = 300, hidden_size = 100):
     lr_vec = [0.001, 0.0003, 0.0001]
     dropout_vec = [0.0, 0.1, 0.2]
     reg_vec = [0.0, 0.001, 0.0003, 0.0001]
 
     for params in itertools.product(lr_vec, dropout_vec, reg_vec):
-	print params
+	filename = 'lr' + str(params[0]) + '_drop' + str(params[1]) + '_reg' + str(params[2])
+	print 'Model', filename
+	model = init_model(embed_size, hidden_size, params[0], params[1], params[2])
+	train_model(train, dev, glove, model, filename)    
 	
 
 def init_model(embed_size = 300, hidden_size = 100, lr = 0.001, dropout = 0.0, reg = 0.001):
@@ -49,7 +52,7 @@ def init_model(embed_size = 300, hidden_size = 100, lr = 0.001, dropout = 0.0, r
     return model
 
 
-def train_model(train, dev, glove, nb_epochs = 20, batch_size = 128, model = init_model(), model_filename =  'models/curr_model'):
+def train_model(train, dev, glove, model = init_model(), model_filename =  'models/curr_model', nb_epochs = 20, batch_size = 128):
 
     X_dev, y_dev = load_data.prepare_vec_dataset(dev, glove)
     best_acc = 0.0
@@ -74,8 +77,8 @@ def train_model(train, dev, glove, nb_epochs = 20, batch_size = 128, model = ini
 	    best_acc = acc
 	else:
 	    break
-	open(model_filename + str(e) + '.json', 'w').write(model.to_json())
-	model.save_weights(model_filename + str(e) + '.h5')
+	open(model_filename + '~' + str(e) + '.json', 'w').write(model.to_json())
+	model.save_weights(model_filename + '~' +str(e) + '.h5')
 
 
 
