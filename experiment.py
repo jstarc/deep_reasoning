@@ -17,48 +17,56 @@ from keras.layers.embeddings import Embedding
 from keras.layers.recurrent import LSTM
 from keras.utils.generic_utils import Progbar
 from keras.models import model_from_json
+from keras.regularizers import l2
+from keras.optimizers import Adam
 
-
+import itertools
 
 if __name__ == "__main__":
     train, dev, test = load_data.load_all_snli_datasets('data/snli_1.0/')
     glove = load_data.import_glove('data/snli_vectors_300.txt')
 
 
-def train_model(train, dev, glove, model_filename =  'models/curr_model'):
-    EMBED_SIZE = 300
-    HIDDEN_SIZE = 100
+def grid_experiments():
+    lr_vec = [0.001, 0.0003, 0.0001]
+    dropout_vec = [0.0, 0.1, 0.2]
+    reg_vec = [0.0, 0.001, 0.0003, 0.0001]
 
+    for params in itertools.product(lr_vec, dropout_vec, reg_vec):
+	print params
+	
+
+def init_model(embed_size = 300, hidden_size = 100, lr = 0.001, dropout = 0.0, reg = 0.001):
     model = Sequential()
-    model.add(Masking(mask_value=0, input_shape = (None, EMBED_SIZE)))
-    model.add(LSTM(HIDDEN_SIZE))
-    model.add(Dropout(0.2))
-    model.add(Dense(3))
+    model.add(Masking(mask_value=0, input_shape = (None, embed_size)))
+    model.add(Dropout(dropout))
+    model.add(LSTM(hidden_size))
+    model.add(Dense(3, W_regularizer=l2(reg)))
+    model.add(Dropout(dropout))
     model.add(Activation('softmax'))
-    model.compile(loss='categorical_crossentropy', optimizer='adam')
+    model.compile(loss='categorical_crossentropy', optimizer=Adam(lr))
 
-    print "Compiled"
+    return model
+
+
+def train_model(train, dev, glove, nb_epochs = 20, batch_size = 128, model = init_model(), model_filename =  'models/curr_model'):
 
     X_dev, y_dev = load_data.prepare_vec_dataset(dev, glove)
-
-    nb_epochs = 20
-    batch_size = 128
-
     best_acc = 0.0
-
+    embed_size = X_dev[0].shape[1]
     for e in range(nb_epochs): 
         print "Epoch ", e,
         mb = load_data.get_minibatches_idx(len(train), batch_size, shuffle=True)
         p = Progbar(len(train))
         for i, train_index in mb:
 	    X_train, y_train = load_data.prepare_vec_dataset([train[k] for k in train_index], glove)
-	    X_padded = load_data.pad_sequences(X_train, dim = EMBED_SIZE)
+	    X_padded = load_data.pad_sequences(X_train, dim = embed_size)
 	    loss, acc = model.train_on_batch(X_padded, y_train, accuracy=True)
 	    p.add(len(X_padded),[('train_loss',loss), ('train_acc', acc)])
 	dmb = load_data.get_minibatches_idx(len(X_dev), batch_size, shuffle=True)
 	p = Progbar(len(X_dev))
 	for i, dev_index in dmb:
-	    X_padded = load_data.pad_sequences(X_dev[dev_index], dim = EMBED_SIZE)
+	    X_padded = load_data.pad_sequences(X_dev[dev_index], dim = embed_size)
 	    loss, acc = model.test_on_batch(X_padded, y_dev[dev_index], accuracy=True)
 	    p.add(len(X_padded),[('test_loss',loss), ('test_acc', acc)])
 	acc = p.sum_values['test_acc'][0] / p.sum_values['test_acc'][1]
