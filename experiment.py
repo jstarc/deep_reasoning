@@ -21,6 +21,7 @@ from keras.regularizers import l2
 from keras.optimizers import Adam
 
 import itertools
+import os
 
 if __name__ == "__main__":
     train, dev, test = load_data.load_all_snli_datasets('data/snli_1.0/')
@@ -33,10 +34,10 @@ def grid_experiments(train, dev, glove, embed_size = 300, hidden_size = 100):
     reg_vec = [0.0, 0.001, 0.0003, 0.0001]
 
     for params in itertools.product(lr_vec, dropout_vec, reg_vec):
-	filename = 'lr' + str(params[0]) + '_drop' + str(params[1]) + '_reg' + str(params[2])
+	filename = 'lr' + str(params[0]).replace('.','') + '_drop' + str(params[1]).replace('.','') + '_reg' + str(params[2]).replace('.','')
 	print 'Model', filename
 	model = init_model(embed_size, hidden_size, params[0], params[1], params[2])
-	train_model(train, dev, glove, model, filename)    
+	train_model(train, dev, glove, model, 'models/' + filename)    
 	
 
 def init_model(embed_size = 300, hidden_size = 100, lr = 0.001, dropout = 0.0, reg = 0.001):
@@ -58,7 +59,7 @@ def train_model(train, dev, glove, model = init_model(), model_filename =  'mode
     best_acc = 0.0
     embed_size = X_dev[0].shape[1]
     for e in range(nb_epochs): 
-        print "Epoch ", e,
+        print "Epoch ", e
         mb = load_data.get_minibatches_idx(len(train), batch_size, shuffle=True)
         p = Progbar(len(train))
         for i, train_index in mb:
@@ -90,7 +91,7 @@ def load_model(model_filename):
 
      
 
-def test_model(model, dev, glove, batch_size = 100):
+def test_model(model, dev, glove, batch_size = 100, return_probs = False):
     X_dev, y_dev = load_data.prepare_vec_dataset(dev, glove)
     dmb = load_data.get_minibatches_idx(len(X_dev), batch_size, shuffle=False)
     y_pred = np.zeros((len(y_dev), 3))
@@ -98,14 +99,13 @@ def test_model(model, dev, glove, batch_size = 100):
         X_padded = load_data.pad_sequences(X_dev[dev_index], dim = len(X_dev[0][0]))
         y_pred[dev_index] = model.predict_on_batch(X_padded)
 
+    acc =  np.sum(np.argmax(y_pred, axis=1) == np.argmax(y_dev, axis=1)) / float(len(y_pred))
+    if return_probs:
+	return acc, y_pred
+    else:
+	return acc
 
-    y_diff = y_dev - y_pred
-    class_max = np.max(y_diff, axis=1)
-
-    display = 100
-    most_wrong = class_max.argsort()[-display:]
-    print np.sum(np.argmax(y_pred, axis=1) == np.argmax(y_dev, axis=1)) / float(len(y_pred))
-    return y_pred
+    #return y_pred
 
 
 def test_model2(model, dev, glove):
@@ -116,6 +116,33 @@ def test_model2(model, dev, glove):
 	label = load_data.LABEL_LIST[np.argmax(probs)]
 	if label == ex[2]:
 	   tp +=1
-    print tp / float(len(dev))
+    return tp / float(len(dev))
    
 
+def test_all_models(dev, test, glove, folder = 'models/'):
+    files = os.listdir(folder)
+    extless = set([file.split('.')[0] for file in files]) - set([''])
+    epoch_less = set([file.split('~')[0] for file in extless])
+    for model_short in epoch_less:
+	epoch = 0	
+	if model_short in extless:
+	    modelname = model_short
+	else: 
+	    while True:
+		modelname_temp = model_short + '~' + str(epoch)
+		if modelname_temp not in extless:
+		    break
+		modelname = modelname_temp
+		epoch += 1
+	
+	print modelname
+	model = load_model(folder + modelname)
+	dev_acc = test_model(model, dev, glove)
+        test_acc = test_model(model, test, glove)
+	print "Dev:", '{0:.2f}'.format(dev_acc * 100), "Test_acc:", '{0:.2f}'.format(test_acc * 100)
+	print 
+ 
+    
+    
+	
+	
