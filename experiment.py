@@ -9,6 +9,7 @@ import sys
 sys.path.append('../keras')
 
 import load_data
+import paraphrase
 import numpy as np
 
 from keras.models import Sequential
@@ -210,3 +211,24 @@ def tfidf_on_wrong(texts, wrong):
         final_list.append(el)
 
     return final_list
+
+
+def augmented_dataset(dataset, ppdb):
+    new_examples = []
+    for ex in dataset:
+	new_examples += augment_example(ex, ppdb)
+    return new_examples
+
+def augment_example(example, ppdb):
+    new_examples = []
+    for word in set(example[0], example[1]):
+	if word in ppdb:
+	    for rep in ppdb[word]:
+		new_examples.append(make_new_ex(example, rep))
+    return new_examples
+		
+
+def test_augmentation(dev):
+    ppdb = paraphrase.load_parap('data/equi.pickle')
+    aug = augmented_dataset(dev, ppdb)
+    return aug

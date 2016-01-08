@@ -59,7 +59,7 @@ def dump_parap(filename, data):
         pickle.dump(data, f)
         
 def load_parap(filename):
-    with open('data/equi.pickle', 'r') as f:
+    with open(filename, 'r') as f:
         return pickle.load(f)
 
 
