@@ -25,6 +25,7 @@ import itertools
 import os
 from math import log
 import operator
+import copy 
 
 if __name__ == "__main__":
     train, dev, test = load_data.load_all_snli_datasets('data/snli_1.0/')
@@ -213,22 +214,38 @@ def tfidf_on_wrong(texts, wrong):
     return final_list
 
 
-def augmented_dataset(dataset, ppdb):
+def augmented_dataset(glove, dataset, ppdb):
     new_examples = []
     for ex in dataset:
-	new_examples += augment_example(ex, ppdb)
+	new_examples += augment_example(glove, ex, ppdb)
     return new_examples
 
-def augment_example(example, ppdb):
+def augment_example(glove, example, ppdb):
     new_examples = []
-    for word in set(example[0], example[1]):
+    for word in set(example[0] + example[1]):
 	if word in ppdb:
 	    for rep in ppdb[word]:
-		new_examples.append(make_new_ex(example, rep))
+		if word in glove and rep in glove:
+		    new_examples.append(make_new_ex(example, word, rep))
     return new_examples
+
+def make_new_ex(example, original, replacement):
+    premise = [replacement if word == original else word for word in example[0]]
+    hypo = [replacement if word == original else word for word in example[1]]  
+    return (premise, hypo, example[2])
 		
 
-def test_augmentation(dev):
-    ppdb = paraphrase.load_parap('data/equi.pickle')
-    aug = augmented_dataset(dev, ppdb)
+def test_augmentation(glove, dev, ppdb_file):
+    ppdb = paraphrase.load_parap(ppdb_file)
+    aug = augmented_dataset(glove, dev, ppdb)
     return aug
+
+
+def parapharse_models(glove, train, dev, ppdb_file):
+    ppdb = paraphrase.load_parap(ppdb_file)
+    aug = augmented_dataset(glove, train, ppdb)
+    train_aug = train + aug
+    
+    train_model(train_aug, dev, glove, model_filename = 'models/train_aug')
+    train_model(train, dev, glove, model_filename = 'models/train_noaug')    
+
