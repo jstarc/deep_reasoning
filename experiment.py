@@ -22,6 +22,8 @@ from keras.optimizers import Adam
 
 import itertools
 import os
+from math import log
+import operator
 
 if __name__ == "__main__":
     train, dev, test = load_data.load_all_snli_datasets('data/snli_1.0/')
@@ -82,8 +84,6 @@ def train_model(train, dev, glove, model = init_model(), model_filename =  'mode
 	model.save_weights(model_filename + '~' +str(e) + '.h5')
 
 
-
-
 def load_model(model_filename):
     model = model_from_json(open(model_filename + '.json').read())
     model.load_weights(model_filename + '.h5')
@@ -105,7 +105,6 @@ def test_model(model, dev, glove, batch_size = 100, return_probs = False):
     else:
 	return acc
 
-    #return y_pred
 
 
 def test_model2(model, dev, glove):
@@ -143,6 +142,71 @@ def test_all_models(dev, test, glove, folder = 'models/'):
 	print 
  
     
+def accuracy_for_subset(y_pred, y_gold, subset):
+    pred = y_pred[subset]
+    gold =  y_gold[subset]
+    return np.sum(np.argmax(pred, axis=1) == np.argmax(gold, axis=1)) / float(len(gold))
+         
+	
+	
+def subset_missing_glove_word(test_set):
+    glove_bare = load_data.import_glove('data/snli_vectors_300.txt')
+    result = []
+    i = 0
+    for ex in test_set:
+	if not all(word in glove_bare for word in (ex[0] + ex[1])):
+	    result.append(i)
+	i += 1
+    return result
+
+def bucket_hypo_len(test_set, sent_ind, limits):
+    lengths = [len(ex[sent_ind]) for ex in test_set]
+    i = 0
+    result = [[] for _ in range(len(limits) + 1)]
+    for l in lengths:
+        rank = 0
+	for lim in limits:
+	    if l <= lim:
+		break
+            rank += 1
+	
+	result[rank].append(i) 
+    	i += 1
+    return result
+
+def wrong_index(y_pred, y_gold):
+    return np.where(np.argmax(y_pred, axis=1) != np.argmax(y_gold, axis=1))[0]
+
+
+def tfidf_on_wrong(texts, wrong):
+    tf = {}
+    idf = {}
+    tfidf = {}
+    for ex in np.array(texts)[wrong]:
+	for word in set(ex[0] + ex[1]):
+	    if word in tf:
+		tf[word] += 1
+	    else:
+		tf[word] = 1
+
+    for ex in texts:
+        for word in set(ex[0] + ex[1]):
+	    if word in idf:
+                idf[word] += 1
+            else:
+                idf[word] = 1
+
+    for word in idf:
+	if word in tf:
+	    tfidf[word] = tf[word] * len(texts) / float(idf[word]) / float(len(wrong))
+
     
-	
-	
+    
+    sorted_tfidf = sorted(tfidf.items(), key=operator.itemgetter(1))
+    sorted_tfidf.reverse()
+    final_list = [] 
+    for tup in sorted_tfidf:
+	el = tup[0] + ' ' + '{0:.2f}'.format(tup[1]) + ' ' + str(tf[tup[0]]) + ' ' + str(idf[tup[0]])
+        final_list.append(el)
+
+    return final_list
