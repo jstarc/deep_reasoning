@@ -59,8 +59,9 @@ def init_model(embed_size = 300, hidden_size = 100, lr = 0.001, dropout = 0.0, r
 
 def train_model(train, dev, glove, model = init_model(), model_filename =  'models/curr_model', nb_epochs = 20, batch_size = 128):
 
+    validation_freq = 1000
     X_dev, y_dev = load_data.prepare_vec_dataset(dev, glove)
-    best_acc = 0.0
+    best_loss = np.inf
     embed_size = X_dev[0].shape[1]
     for e in range(nb_epochs): 
         print "Epoch ", e
@@ -71,19 +72,31 @@ def train_model(train, dev, glove, model = init_model(), model_filename =  'mode
 	    X_padded = load_data.pad_sequences(X_train, dim = embed_size)
 	    loss, acc = model.train_on_batch(X_padded, y_train, accuracy=True)
 	    p.add(len(X_padded),[('train_loss',loss), ('train_acc', acc)])
-	dmb = load_data.get_minibatches_idx(len(X_dev), batch_size, shuffle=True)
-	p = Progbar(len(X_dev))
-	for i, dev_index in dmb:
-	    X_padded = load_data.pad_sequences(X_dev[dev_index], dim = embed_size)
-	    loss, acc = model.test_on_batch(X_padded, y_dev[dev_index], accuracy=True)
-	    p.add(len(X_padded),[('test_loss',loss), ('test_acc', acc)])
-	acc = p.sum_values['test_acc'][0] / p.sum_values['test_acc'][1]
-	if acc > best_acc:
-	    best_acc = acc
-	else:
-	    break
-	open(model_filename + '~' + str(e) + '.json', 'w').write(model.to_json())
-	model.save_weights(model_filename + '~' +str(e) + '.h5')
+	    iter = e * len(mb) + i + 1
+            if iter % validation_freq == 0:
+		print
+		loss, acc = validate_model(model, X_dev, y_dev, batch_size, embed_size)
+		print
+		if loss < best_loss:
+		    best_loss = loss
+		    fn = model_filename + '~' + str(iter)
+		    open(fn + '.json', 'w').write(model.to_json())
+	            model.save_weights(fn + '.h5')
+	        else:
+		    return
+
+
+def validate_model(model, X_dev, y_dev, batch_size, embed_size):
+    dmb = load_data.get_minibatches_idx(len(X_dev), batch_size, shuffle=True)
+    p = Progbar(len(X_dev))
+    for i, dev_index in dmb:
+        X_padded = load_data.pad_sequences(X_dev[dev_index], dim = embed_size)
+        loss, acc = model.test_on_batch(X_padded, y_dev[dev_index], accuracy=True)
+        p.add(len(X_padded),[('test_loss',loss), ('test_acc', acc)])
+    loss = p.sum_values['test_loss'][0] / p.sum_values['test_loss'][1]
+    acc = p.sum_values['test_acc'][0] / p.sum_values['test_acc'][1]
+    return loss, acc
+	
 
 
 def load_model(model_filename):
@@ -128,13 +141,9 @@ def test_all_models(dev, test, glove, folder = 'models/'):
 	epoch = 0	
 	if model_short in extless:
 	    modelname = model_short
-	else: 
-	    while True:
-		modelname_temp = model_short + '~' + str(epoch)
-		if modelname_temp not in extless:
-		    break
-		modelname = modelname_temp
-		epoch += 1
+	else:
+	    epoch_max = max([int(file.split('~')[1]) for file in extless]) 
+	    modelname = model_short + '~' + str(epoch_max)
 	
 	print modelname
 	model = load_model(folder + modelname)
