@@ -44,11 +44,12 @@ def load_ppdb_data(glove):
             h = example[2]
             rel = example[-1]
             if rel == 'Equivalence':
-                if p in glove:
-                    add_pair(result, p, h)
-                if h in glove:
-                    add_pair(result, h, p)
-               
+                if not (p.startswith(h) or h.startswith(p)):       
+                    if p in glove:
+                        add_pair(result, p, h)
+                    if h in glove:
+                        add_pair(result, h, p)
+                        
             count += 1
             if count % 100000 == 0:
                 print count
