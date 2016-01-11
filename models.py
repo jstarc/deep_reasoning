@@ -31,7 +31,8 @@ def init_model(embed_size = 300, hidden_size = 100, lr = 0.001, dropout = 0.0, r
 def train_model(train, dev, glove, model = init_model(), model_filename =  'models/curr_model', nb_epochs = 20, batch_size = 128):
     validation_freq = 1000
     X_dev, y_dev = load_data.prepare_vec_dataset(dev, glove)
-    best_loss = np.inf
+    test_losses = []
+    worse_steps = 4  
     embed_size = X_dev[0].shape[1]
     for e in range(nb_epochs): 
         print "Epoch ", e
@@ -47,13 +48,14 @@ def train_model(train, dev, glove, model = init_model(), model_filename =  'mode
 		print
 		loss, acc = validate_model(model, X_dev, y_dev, batch_size, embed_size)
 		print
-		if loss < best_loss:
-		    best_loss = loss
+		test_losses.append(loss)
+		if (np.array(test_losses[-worse_steps:]) < min(test_losses)).all():
+		    print test_loses
+		    return
+		else:
 		    fn = model_filename + '~' + str(iter)
 		    open(fn + '.json', 'w').write(model.to_json())
 	            model.save_weights(fn + '.h5')
-	        else:
-		    return
             
 def validate_model(model, X_dev, y_dev, batch_size, embed_size):
     dmb = load_data.get_minibatches_idx(len(X_dev), batch_size, shuffle=True)
@@ -65,6 +67,11 @@ def validate_model(model, X_dev, y_dev, batch_size, embed_size):
     loss = p.sum_values['test_loss'][0] / p.sum_values['test_loss'][1]
     acc = p.sum_values['test_acc'][0] / p.sum_values['test_acc'][1]
     return loss, acc
+
+def update_model_once(model, glove, train_data, embed_size):
+    X_train, y_train = load_data.prepare_vec_dataset(train_data, glove)
+    X_padded = load_data.pad_sequences(X_train, dim = embed_size)
+    model.train_on_batch(X_padded, y_train, accuracy=True)    
         
 def load_model(model_filename):
     model = model_from_json(open(model_filename + '.json').read())
