@@ -56,7 +56,8 @@ def test_all_models(dev, test, glove, folder = 'models/'):
 	if model_short in extless:
 	    modelname = model_short
 	else:
-	    epoch_max = max([int(file.split('~')[1]) for file in extless]) 
+            same_exper = [m for m in extless if m.startswith(model_short)]
+	    epoch_max = max([int(file.split('~')[1]) for file in same_exper]) 
 	    modelname = model_short + '~' + str(epoch_max)
 	
 	print modelname
