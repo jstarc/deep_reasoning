@@ -9,6 +9,10 @@ import operator
 
 def predict_example(premise, hypothesis, model, glove):
     concat = premise.split() + ["--"] + hypothesis.split()
+    for word in concat:
+        if word not in glove:
+	    print word, 'not in glove'
+	    return
     vec = load_data.load_word_vecs(concat, glove)
     return model.predict_on_batch(np.expand_dims(vec, axis=0))
 

@@ -10,6 +10,7 @@ sys.path.append('../keras')
 
 import load_data
 import models
+import misc
 
 import paraphrase
 import numpy as np
@@ -50,7 +51,7 @@ def test_model2(model, dev, glove):
 
 def test_all_models(dev, test, glove, folder = 'models/'):
     files = os.listdir(folder)
-    extless = set([file.split('.')[0] for file in files]) - set([''])
+    extless = set([file.split('.')[0] for file in files if os.path.isfile(file)]) - set([''])
     epoch_less = set([file.split('~')[0] for file in extless])
     for model_short in epoch_less:
 	if model_short in extless:
@@ -106,3 +107,15 @@ def parapharse_models(glove, train, dev, ppdb_file):
     models.train_model(train_aug, dev, glove, model_filename = 'models/train_aug')
     models.train_model(train, dev, glove, model_filename = 'models/train_noaug')    
 
+def tune_model(observed_example, train_example, model, glove):
+    class_arg = load_data.LABEL_LIST.index(observed_example[2])
+    prem = " ".join(observed_example[0])
+    hypo = " ".join(observed_example[1])
+    print prem, hypo, observed_example[2], class_arg
+    for i in range(30):
+	probs = misc.predict_example(prem, hypo, model, glove)[0]
+        print i, probs
+        if probs.argmax() == class_arg:
+            break
+        models.update_model_once(model, glove, [train_example])
+        

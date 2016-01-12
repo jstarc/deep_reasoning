@@ -15,6 +15,8 @@ from keras.models import model_from_json
 
 import load_data
 import numpy as np
+import os
+import csv
 
 def init_model(embed_size = 300, hidden_size = 100, lr = 0.001, dropout = 0.0, reg = 0.001):
     model = Sequential()
@@ -28,12 +30,17 @@ def init_model(embed_size = 300, hidden_size = 100, lr = 0.001, dropout = 0.0, r
 
     return model
     
-def train_model(train, dev, glove, model = init_model(), model_filename =  'models/curr_model', nb_epochs = 20, batch_size = 128):
+def train_model(train, dev, glove, model = init_model(), model_dir =  'models/curr_model', nb_epochs = 20, batch_size = 128):
     validation_freq = 1000
     X_dev, y_dev = load_data.prepare_vec_dataset(dev, glove)
     test_losses = []
+    stats = [['iter', 'train_loss', 'train_acc', 'dev_loss', 'dev_acc']]
+    exit_loop = False
     worse_steps = 4  
     embed_size = X_dev[0].shape[1]
+    
+    if not os.path.exists(model_dir):
+         os.makedirs(model_dir)
     for e in range(nb_epochs): 
         print "Epoch ", e
         mb = load_data.get_minibatches_idx(len(train), batch_size, shuffle=True)
@@ -41,36 +48,43 @@ def train_model(train, dev, glove, model = init_model(), model_filename =  'mode
         for i, train_index in mb:
 	    X_train, y_train = load_data.prepare_vec_dataset([train[k] for k in train_index], glove)
 	    X_padded = load_data.pad_sequences(X_train, dim = embed_size)
-	    loss, acc = model.train_on_batch(X_padded, y_train, accuracy=True)
-	    p.add(len(X_padded),[('train_loss',loss), ('train_acc', acc)])
+	    train_loss, train_acc = model.train_on_batch(X_padded, y_train, accuracy=True)
+	    p.add(len(X_padded),[('train_loss', train_loss), ('train_acc', train_acc)])
 	    iter = e * len(mb) + i + 1
             if iter % validation_freq == 0:
 		print
-		loss, acc = validate_model(model, X_dev, y_dev, batch_size, embed_size)
+		dev_loss, dev_acc = validate_model(model, X_dev, y_dev, batch_size)
 		print
-		test_losses.append(loss)
-		if (np.array(test_losses[-worse_steps:]) < min(test_losses)).all():
-		    print test_loses
-		    return
+		test_losses.append(dev_loss)
+		stats.append([iter, train_loss, train_acc, dev_loss, dev_acc])
+		if (np.array(test_losses[-worse_steps:]) > min(test_losses)).all():
+		    exit_loop = True
+                    break
 		else:
-		    fn = model_filename + '~' + str(iter)
+		    fn = model_dir + '/model' '~' + str(iter)
 		    open(fn + '.json', 'w').write(model.to_json())
 	            model.save_weights(fn + '.h5')
+	if exit_loop:
+	    break
+    with open(model_dir + '/stats.csv', 'w') as f:
+	writer = csv.writer(f)
+	writer.writerows(stats)
+
             
-def validate_model(model, X_dev, y_dev, batch_size, embed_size):
+def validate_model(model, X_dev, y_dev, batch_size):
     dmb = load_data.get_minibatches_idx(len(X_dev), batch_size, shuffle=True)
     p = Progbar(len(X_dev))
     for i, dev_index in dmb:
-        X_padded = load_data.pad_sequences(X_dev[dev_index], dim = embed_size)
+        X_padded = load_data.pad_sequences(X_dev[dev_index], dim = len(X_dev[0][0]))
         loss, acc = model.test_on_batch(X_padded, y_dev[dev_index], accuracy=True)
         p.add(len(X_padded),[('test_loss',loss), ('test_acc', acc)])
     loss = p.sum_values['test_loss'][0] / p.sum_values['test_loss'][1]
     acc = p.sum_values['test_acc'][0] / p.sum_values['test_acc'][1]
     return loss, acc
 
-def update_model_once(model, glove, train_data, embed_size):
+def update_model_once(model, glove, train_data):
     X_train, y_train = load_data.prepare_vec_dataset(train_data, glove)
-    X_padded = load_data.pad_sequences(X_train, dim = embed_size)
+    X_padded = load_data.pad_sequences(X_train, dim = len(X_train[0][0]))
     model.train_on_batch(X_padded, y_train, accuracy=True)    
         
 def load_model(model_filename):
@@ -92,3 +106,4 @@ def test_model(model, dev, glove, batch_size = 100, return_probs = False):
 	return acc, y_pred
     else:
 	return acc
+
