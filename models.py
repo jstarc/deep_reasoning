@@ -65,7 +65,8 @@ def train_model(train, dev, glove, model = init_model(), model_dir =  'models/cu
          os.makedirs(model_dir)
     for e in range(nb_epochs): 
         print "Epoch ", e
-        mb = load_data.get_minibatches_idx(len(train), batch_size, shuffle=True)
+        #mb = load_data.get_minibatches_idx(len(train), batch_size, shuffle=True)
+	mb = load_data.get_minibatches_idx_bucketing([len(ex[0]) + len(ex[1]) for ex in train], batch_size, shuffle=True)
         p = Progbar(len(train))
         for i, train_index in mb:
 	    X_train, y_train = load_data.prepare_vec_dataset([train[k] for k in train_index], glove)
