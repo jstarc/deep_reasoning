@@ -119,3 +119,13 @@ def tune_model(observed_example, train_example, model, glove):
             break
         models.update_model_once(model, glove, [train_example])
         
+
+def generate_tautologies(dataset):
+    unique = set()
+    result = []
+    for ex in dataset:
+	premise = " ".join(ex[0])
+        if  premise not in unique:
+	    result.append((ex[0], ex[0], 'entailment'))
+	    unique.add(premise)
+    return result     
