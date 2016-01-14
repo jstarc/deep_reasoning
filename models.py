@@ -7,7 +7,7 @@ Created on Mon Jan 11 12:28:46 2016
 
 from keras.models import Sequential
 from keras.layers.core import Dense, Dropout, Activation, Masking
-from keras.layers.recurrent import LSTM
+from keras.layers.recurrent import LSTM, GRU
 from keras.regularizers import l2
 from keras.optimizers import Adam
 from keras.utils.generic_utils import Progbar
@@ -17,6 +17,28 @@ import load_data
 import numpy as np
 import os
 import csv
+
+
+import sys
+sys.path.append('../seq2seq')
+from seq2seq.layers.state_transfer_lstm import StateTransferLSTM
+from keras.models import Graph
+
+def alter_model(embed_size = 300, hidden_size = 100, batch_size = 128):
+    premise_layer = StateTransferLSTM(output_dim=hidden_size, state_input=False, input_shape=(batch_size, embed_size))
+    hypo_layer = StateTransferLSTM(output_dim=hidden_size, state_input=True, input_shape=(batch_size, embed_size))
+    premise_layer.broadcast_state(hypo_layer)
+       
+    graph = Graph()
+    graph.add_input(name='premise_input', input_shape= (batch_size, embed_size))
+    graph.add_input(name='hypo_input', input_shape= (batch_size, embed_size))
+    graph.add_node(premise_layer, name='premise', input='premise_input')
+    graph.add_node(hypo_layer, name='hypo', input='hypo_input')
+    graph.add_node(Dense(3), name='dense', input='hypo')
+    graph.add_node(Activation('softmax'), name='softmax', input='dense')
+    graph.add_output(name='output', input='softmax')
+    graph.compile(loss={'output':'categorical_crossentropy'}, optimizer=Adam())
+    return graph
 
 def init_model(embed_size = 300, hidden_size = 100, lr = 0.001, dropout = 0.0, reg = 0.001):
     model = Sequential()
