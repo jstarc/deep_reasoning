@@ -129,3 +129,33 @@ def generate_tautologies(dataset):
 	    result.append((ex[0], ex[0], 'entailment'))
 	    unique.add(premise)
     return result     
+
+def unknown_words_analysis(train, dev):
+    train_words = set.union(*[set(ex[0]+ex[1]) for ex in train])
+    indices = [[],[]]
+    for i in range(len(dev)):
+	diff = len(set(dev[i][0] + dev[i][1]) - train_words)
+        if diff == 0:
+	    indices[0].append(i)
+	else:
+	    indices[1].append(i)
+    return indices
+
+def color_analysis(dev):
+    COLORS = set(['black', 'blue', 'orange', 'white', 'yellow', 'green', 'pink', 'purple', 'red', 'brown', 'gray', 'grey'])
+    indices = [[],[]]
+    for i in range(len(dev)):
+        diff = len(set(dev[i][0] + dev[i][1]) & COLORS)
+        if diff == 0:
+            indices[0].append(i)
+        else:
+            indices[1].append(i)
+    return indices
+
+def mixture_experiments(train, dev, glove, splits = 5):
+    for i in range(splits):
+        model_name = 'mixture' + str(i)
+        print 'Model', model_name
+        model = models.init_model()
+        div = len(train) / splits
+        models.train_model(train[:i*div] + train[(i+1)*div:splits*div], dev, glove, model, 'models/' + model_name)

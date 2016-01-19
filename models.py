@@ -4,7 +4,8 @@ Created on Mon Jan 11 12:28:46 2016
 
 @author: Janez
 """
-
+import sys
+sys.path.append('../keras')
 from keras.models import Sequential
 from keras.layers.core import Dense, Dropout, Activation, Masking
 from keras.layers.recurrent import LSTM, GRU
@@ -42,8 +43,8 @@ def alter_model(embed_size = 300, hidden_size = 100, batch_size = 128):
 
 def init_model(embed_size = 300, hidden_size = 100, lr = 0.001, dropout = 0.0, reg = 0.001):
     model = Sequential()
-    model.add(Masking(mask_value=0, input_shape = (None, embed_size)))
-    model.add(Dropout(dropout))
+    #model.add(Masking(mask_value=0, input_shape = (None, embed_size)))
+    model.add(Dropout(dropout, input_shape = (None, embed_size)))
     model.add(LSTM(hidden_size))
     model.add(Dense(3, W_regularizer=l2(reg)))
     model.add(Dropout(dropout))
@@ -52,21 +53,20 @@ def init_model(embed_size = 300, hidden_size = 100, lr = 0.001, dropout = 0.0, r
 
     return model
     
-def train_model(train, dev, glove, model = init_model(), model_dir =  'models/curr_model', nb_epochs = 20, batch_size = 128):
+def train_model(train, dev, glove, model = init_model(), model_dir =  'models/curr_model', nb_epochs = 20, batch_size = 128, worse_steps = 4):
     validation_freq = 1000
     X_dev, y_dev = load_data.prepare_vec_dataset(dev, glove)
     test_losses = []
     stats = [['iter', 'train_loss', 'train_acc', 'dev_loss', 'dev_acc']]
     exit_loop = False
-    worse_steps = 4  
     embed_size = X_dev[0].shape[1]
     
     if not os.path.exists(model_dir):
          os.makedirs(model_dir)
     for e in range(nb_epochs): 
         print "Epoch ", e
-        #mb = load_data.get_minibatches_idx(len(train), batch_size, shuffle=True)
-	mb = load_data.get_minibatches_idx_bucketing([len(ex[0]) + len(ex[1]) for ex in train], batch_size, shuffle=True)
+        mb = load_data.get_minibatches_idx(len(train), batch_size, shuffle=True)
+	#mb = load_data.get_minibatches_idx_bucketing([len(ex[0]) + len(ex[1]) for ex in train], batch_size, shuffle=True)
         p = Progbar(len(train))
         for i, train_index in mb:
 	    X_train, y_train = load_data.prepare_vec_dataset([train[k] for k in train_index], glove)
@@ -119,6 +119,7 @@ def load_model(model_filename):
 def test_model(model, dev, glove, batch_size = 100, return_probs = False):
     X_dev, y_dev = load_data.prepare_vec_dataset(dev, glove)
     dmb = load_data.get_minibatches_idx(len(X_dev), batch_size, shuffle=False)
+    #dmb = load_data.get_minibatches_idx_bucketing([len(ex[0]) + len(ex[1]) for ex in dev], batch_size, shuffle=True)
     y_pred = np.zeros((len(y_dev), 3))
     for i, dev_index in dmb:
         X_padded = load_data.pad_sequences(X_dev[dev_index], dim = len(X_dev[0][0]))

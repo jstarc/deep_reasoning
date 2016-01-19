@@ -163,6 +163,8 @@ def get_minibatches_idx_bucketing(lengths, minibatch_size, shuffle=False):
     """
 
     n= len(lengths)
+    noise = np.random.random(n) - 0.5
+    lengths += noise
     idx_list = np.argsort(lengths)
     
 
