@@ -128,7 +128,24 @@ def generate_tautologies(dataset):
         if  premise not in unique:
 	    result.append((ex[0], ex[0], 'entailment'))
 	    unique.add(premise)
-    return result     
+    return result
+
+def generate_contradictions(dataset):
+    result = []
+    for ex in dataset:
+        if ex[2] == 'contradiction':
+            result.append((ex[1],ex[0],ex[2]))
+    return result
+
+def generate_neutral(dataset):
+    result = []
+    for ex in dataset:
+	if ex[2] == 'entailment':
+            result.append((ex[1],ex[0],'neutral'))
+    return result
+
+def generate_all(dataset):
+    return generate_tautologies(dataset) + generate_contradictions(dataset) + generate_neutral(dataset)     
 
 def unknown_words_analysis(train, dev):
     train_words = set.union(*[set(ex[0]+ex[1]) for ex in train])
