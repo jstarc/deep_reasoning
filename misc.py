@@ -6,9 +6,16 @@
 import load_data
 import numpy as np
 import operator
+import os 
+import csv
+import pandas as pa
 
 def predict_example(premise, hypothesis, model, glove):
     concat = premise.split() + ["--"] + hypothesis.split()
+    for word in concat:
+        if word not in glove:
+	    print word, 'not in glove'
+	    return
     vec = load_data.load_word_vecs(concat, glove)
     return model.predict_on_batch(np.expand_dims(vec, axis=0))
 
@@ -81,4 +88,19 @@ def tfidf_on_wrong(texts, wrong):
 
     return final_list
 
-        
+def display_perfomances(folder = 'models/'):
+     for subfolder in os.listdir(folder):
+	sf_path = os.path.join(folder, subfolder)
+	if not os.path.isdir(sf_path):
+	    continue
+        stats_path = os.path.join(sf_path, 'stats.csv')
+        if not os.path.isfile(stats_path):
+	    continue
+
+        stats = pa.read_csv(stats_path)
+	index = stats['dev_acc'].argmax()
+	print "{0:.3f}".format(stats.iloc[index]['dev_acc']), subfolder, stats.iloc[index]['iter']
+			 
+	   
+                     
+

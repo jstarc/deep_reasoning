@@ -10,6 +10,7 @@ sys.path.append('../keras')
 
 import load_data
 import models
+import misc
 
 import paraphrase
 import numpy as np
@@ -50,13 +51,14 @@ def test_model2(model, dev, glove):
 
 def test_all_models(dev, test, glove, folder = 'models/'):
     files = os.listdir(folder)
-    extless = set([file.split('.')[0] for file in files]) - set([''])
+    extless = set([file.split('.')[0] for file in files if os.path.isfile(file)]) - set([''])
     epoch_less = set([file.split('~')[0] for file in extless])
     for model_short in epoch_less:
 	if model_short in extless:
 	    modelname = model_short
 	else:
-	    epoch_max = max([int(file.split('~')[1]) for file in extless]) 
+            same_exper = [m for m in extless if m.startswith(model_short)]
+	    epoch_max = max([int(file.split('~')[1]) for file in same_exper]) 
 	    modelname = model_short + '~' + str(epoch_max)
 	
 	print modelname
@@ -105,3 +107,72 @@ def parapharse_models(glove, train, dev, ppdb_file):
     models.train_model(train_aug, dev, glove, model_filename = 'models/train_aug')
     models.train_model(train, dev, glove, model_filename = 'models/train_noaug')    
 
+def tune_model(observed_example, train_example, model, glove):
+    class_arg = load_data.LABEL_LIST.index(observed_example[2])
+    prem = " ".join(observed_example[0])
+    hypo = " ".join(observed_example[1])
+    print prem, hypo, observed_example[2], class_arg
+    for i in range(30):
+	probs = misc.predict_example(prem, hypo, model, glove)[0]
+        print i, probs
+        if probs.argmax() == class_arg:
+            break
+        models.update_model_once(model, glove, [train_example])
+        
+
+def generate_tautologies(dataset):
+    unique = set()
+    result = []
+    for ex in dataset:
+	premise = " ".join(ex[0])
+        if  premise not in unique:
+	    result.append((ex[0], ex[0], 'entailment'))
+	    unique.add(premise)
+    return result
+
+def generate_contradictions(dataset):
+    result = []
+    for ex in dataset:
+        if ex[2] == 'contradiction':
+            result.append((ex[1],ex[0],ex[2]))
+    return result
+
+def generate_neutral(dataset):
+    result = []
+    for ex in dataset:
+	if ex[2] == 'entailment':
+            result.append((ex[1],ex[0],'neutral'))
+    return result
+
+def generate_all(dataset):
+    return generate_tautologies(dataset) + generate_contradictions(dataset) + generate_neutral(dataset)     
+
+def unknown_words_analysis(train, dev):
+    train_words = set.union(*[set(ex[0]+ex[1]) for ex in train])
+    indices = [[],[]]
+    for i in range(len(dev)):
+	diff = len(set(dev[i][0] + dev[i][1]) - train_words)
+        if diff == 0:
+	    indices[0].append(i)
+	else:
+	    indices[1].append(i)
+    return indices
+
+def color_analysis(dev):
+    COLORS = set(['black', 'blue', 'orange', 'white', 'yellow', 'green', 'pink', 'purple', 'red', 'brown', 'gray', 'grey'])
+    indices = [[],[]]
+    for i in range(len(dev)):
+        diff = len(set(dev[i][0] + dev[i][1]) & COLORS)
+        if diff == 0:
+            indices[0].append(i)
+        else:
+            indices[1].append(i)
+    return indices
+
+def mixture_experiments(train, dev, glove, splits = 5):
+    for i in range(splits):
+        model_name = 'mixture' + str(i)
+        print 'Model', model_name
+        model = models.init_model()
+        div = len(train) / splits
+        models.train_model(train[:i*div] + train[(i+1)*div:splits*div], dev, glove, model, 'models/' + model_name)
