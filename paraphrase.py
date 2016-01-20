@@ -26,7 +26,7 @@ def test():
             rel = example[-1]
             result.add(rel)
             
-            if rel == 'ForwardEntailment' and p in glove:
+            if rel == 'Equivalence' and p in glove:
                 print p, h
                
             count += 1
@@ -69,7 +69,6 @@ def add_pair(dct, p, h):
       dct[p] = set()
     dct[p].add(h)
     
-
 if __name__ == "__main__":
     glove = load_data.import_glove(GLOVE) 
     rep  =  load_ppdb_data(glove)  

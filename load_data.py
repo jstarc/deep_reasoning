@@ -157,6 +157,17 @@ def get_minibatches_idx(n, minibatch_size, shuffle=False):
 
     return zip(range(len(minibatches)), minibatches)
     
+def prepare_word2vec(model, snli_path):
+    train, dev, test = load_all_snli_datasets(snli_path)
+    tokens = all_tokens(train) | all_tokens(dev) | all_tokens(test)
+    glove = {}    
+    for token in tokens:
+        if token in model:
+            glove[token] = model[token]
+    return glove
+        
+
+
 #train, dev, test = load_all_snli_datasets('data\\snli_1.0\\')
 #glove = import_glove('data\\snli_vectors.txt')
 
