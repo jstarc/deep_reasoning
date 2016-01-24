@@ -96,6 +96,20 @@ def prepare_vec_dataset(dataset, glove):
     one_hot_y[np.arange(len(y)), y] = 1
     return np.array(X), one_hot_y
     
+def prepare_split_vec_dataset(dataset, glove):
+    P = []
+    H = []
+    y = []
+    for example in dataset:
+        if example[2] == '-':
+            continue
+        P.append(load_word_vecs(example[0], glove))
+        H.append(load_word_vecs(example[0], glove))
+        y.append(LABEL_LIST.index(example[2]))
+    one_hot_y = np.zeros((len(y), len(LABEL_LIST)))
+    one_hot_y[np.arange(len(y)), y] = 1
+    return np.array(P), np.array(H), one_hot_y
+    
 def load_word_vec(token, glove):
     if token not in glove:
 	glove[token] = np.random.uniform(-0.05, 0.05, len(glove.values()[0]))    

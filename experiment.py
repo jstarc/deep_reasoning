@@ -37,7 +37,6 @@ def grid_experiments(train, dev, glove, embed_size = 300, hidden_size = 100):
 	models.train_model(train, dev, glove, model, 'models/' + filename)    
 	
 
-
 def test_model2(model, dev, glove):
     from misc import predict_example
     tp = 0
