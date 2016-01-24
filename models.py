@@ -148,7 +148,7 @@ def validate_model_graph(model, X_dev_p, X_dev_h, y_dev, batch_size):
         padded_h = load_data.pad_sequences(X_dev_h[dev_index], dim = len(X_dev_p[0][0]))
         data = {'premise_input': padded_p, 'hypo_input': padded_h}
         y_pred = model.predict(data)
-        loss = cc(y_dev[dev_index], y_pred)
+        loss = -np.sum(y_dev[dev_index] * np.log(y_pred)) / float(len(y_pred))
         acc =  np.sum(np.argmax(y_pred, axis=1) == np.argmax(y_dev[dev_index], axis=1)) / float(len(y_pred))
         p.add(len(padded_p),[('test_loss', loss), ('test_acc', acc)])
     loss = p.sum_values['test_loss'][0] / p.sum_values['test_loss'][1]
