@@ -42,7 +42,7 @@ import csv
 #    graph.compile(loss={'output':'categorical_crossentropy'}, optimizer=Adam())
 #    return graph
 
-def init_model(embed_size = 300, hidden_size = 100, lr = 0.001, dropout = 0.0, reg = 0.001):
+def init_model(embed_size = 300, hidden_size = 100, lr = 0.001, dropout = 0.0, reg = 0.0):
     model = Sequential()
     #model.add(Masking(mask_value=0, input_shape = (None, embed_size)))
     model.add(Dropout(dropout, input_shape = (None, embed_size)))
@@ -54,7 +54,7 @@ def init_model(embed_size = 300, hidden_size = 100, lr = 0.001, dropout = 0.0, r
 
     return model
     
-def train_model(train, dev, glove, model = init_model(), model_dir =  'models/curr_model', nb_epochs = 20, batch_size = 128, worse_steps = 4):
+def train_model(train, dev, glove, model, model_dir =  'models/curr_model', nb_epochs = 20, batch_size = 128, worse_steps = 5):
     validation_freq = 1000
     X_dev, y_dev = load_data.prepare_vec_dataset(dev, glove)
     test_losses = []

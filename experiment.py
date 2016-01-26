@@ -175,3 +175,16 @@ def mixture_experiments(train, dev, glove, splits = 5):
         model = models.init_model()
         div = len(train) / splits
         models.train_model(train[:i*div] + train[(i+1)*div:splits*div], dev, glove, model, 'models/' + model_name)
+
+def extended_tautologies(train, dev, glove):
+    augment_data = generate_all(train)
+    from random import shuffle
+    shuffle(augment_data)
+    augment_weight = [0, 0.05, 0.15, 0.5]
+    for w in augment_weight:
+        new_train = train + augment_data[:int(len(train)*w)]
+	w_str =  str(w).replace('.','')
+        model = models.init_model()
+	models.train_model(new_train, dev, glove, model = model, model_dir = 'models/aug' + w_str)
+        
+        
