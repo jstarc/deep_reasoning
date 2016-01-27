@@ -88,7 +88,7 @@ def tfidf_on_wrong(texts, wrong):
 
     return final_list
 
-def display_perfomances(folder = 'models/'):
+def display_perfomances(folder = 'models/', metric='dev_acc'):
      for subfolder in os.listdir(folder):
 	sf_path = os.path.join(folder, subfolder)
 	if not os.path.isdir(sf_path):
@@ -98,9 +98,15 @@ def display_perfomances(folder = 'models/'):
 	    continue
 
         stats = pa.read_csv(stats_path)
-	index = stats['dev_acc'].argmax()
-	print "{0:.3f}".format(stats.iloc[index]['dev_acc']), subfolder, stats.iloc[index]['iter']
+	index = stats[metric].argmax()
+	print "{0:.3f}".format(stats.iloc[index][metric]), subfolder, stats.iloc[index]['iter']
 			 
-	   
+def best_model_path(folder):
+    stats_path = os.path.join(folder, 'stats.csv')	   
+    if not os.path.isfile(stats_path):
+	print "Invalid path"
+    stats = pa.read_csv(stats_path)
+    index = stats['dev_acc'].argmax()
+    return folder + '/model~' + str(stats['iter'][index])
                      
 

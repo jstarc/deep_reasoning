@@ -100,10 +100,7 @@ class AttentionLayer(Recurrent):
          
     def step(self, x, states):
     
-       
         P_t = K.dot(x, self.W_t)
-        
-       
         P_a = K.dot(states[0], self.W_a)
         sum3 = self.P_j + P_t.dimshuffle((0,'x',1)) + P_a.dimshuffle((0,'x',1))
         E_kj = K.tanh(sum3).dot(self.w_e)

@@ -7,7 +7,7 @@ Created on Mon Jan 11 12:28:46 2016
 import sys
 sys.path.append('../keras')
 from keras.models import Sequential
-from keras.layers.core import Dense, Dropout, Activation
+from keras.layers.core import Dense, Dropout, Activation, Masking
 from keras.layers.recurrent import LSTM
 from keras.regularizers import l2
 from keras.optimizers import Adam
@@ -42,10 +42,11 @@ import csv
 #    graph.compile(loss={'output':'categorical_crossentropy'}, optimizer=Adam())
 #    return graph
 
-def init_model(embed_size = 300, hidden_size = 100, lr = 0.001, dropout = 0.0, reg = 0.001):
+def init_model(embed_size = 300, hidden_size = 100, lr = 0.001, dropout = 0.0, reg = 0.0):
     model = Sequential()
-    #model.add(Masking(mask_value=0, input_shape = (None, embed_size)))
-    model.add(Dropout(dropout, input_shape = (None, embed_size)))
+    model.add(Masking(mask_value=0, input_shape = (None, embed_size)))
+    #model.add(Dropout(dropout, input_shape = (None, embed_size)))
+    model.add(Dropout(dropout))
     model.add(LSTM(hidden_size))
     model.add(Dense(3, W_regularizer=l2(reg)))
     model.add(Dropout(dropout))
@@ -54,7 +55,7 @@ def init_model(embed_size = 300, hidden_size = 100, lr = 0.001, dropout = 0.0, r
 
     return model
     
-def train_model(train, dev, glove, model = init_model(), model_dir =  'models/curr_model', nb_epochs = 20, batch_size = 128, worse_steps = 4):
+def train_model(train, dev, glove, model, model_dir =  'models/curr_model', nb_epochs = 20, batch_size = 128, worse_steps = 5):
     validation_freq = 1000
     X_dev, y_dev = load_data.prepare_vec_dataset(dev, glove)
     test_losses = []
@@ -66,7 +67,8 @@ def train_model(train, dev, glove, model = init_model(), model_dir =  'models/cu
          os.makedirs(model_dir)
     for e in range(nb_epochs): 
         print "Epoch ", e
-        mb = load_data.get_minibatches_idx(len(train), batch_size, shuffle=True)
+        #mb = load_data.get_minibatches_idx(len(train), batch_size, shuffle=True)
+	mb = load_data.get_minibatches_same_premise(train, batch_size)
         #mb = load_data.get_minibatches_idx_bucketing([len(ex[0]) + len(ex[1]) for ex in train], batch_size, shuffle=True)
         p = Progbar(len(train))
         for i, train_index in mb:
@@ -141,14 +143,15 @@ def train_model_graph(train, dev, glove, model = init_model(), model_dir =  'mod
  
  
 def validate_model_graph(model, X_dev_p, X_dev_h, y_dev, batch_size):
-    dmb = load_data.get_minibatches_idx(len(X_dev_p), batch_size, shuffle=True)
+    #dmb = load_data.get_minibatches_idx(len(X_dev_p), batch_size, shuffle=True)
+    dmb = load_data.get_minibatches_same_premise(dev, batch_size)
     p = Progbar(len(X_dev_p))
     for i, dev_index in dmb:
         padded_p = load_data.pad_sequences(X_dev_p[dev_index], dim = len(X_dev_p[0][0]))
         padded_h = load_data.pad_sequences(X_dev_h[dev_index], dim = len(X_dev_p[0][0]))
         data = {'premise_input': padded_p, 'hypo_input': padded_h}
         y_pred = model.predict(data)
-        loss = cc(y_dev[dev_index], y_pred)
+        loss = -np.sum(y_dev[dev_index] * np.log(y_pred)) / float(len(y_pred))
         acc =  np.sum(np.argmax(y_pred, axis=1) == np.argmax(y_dev[dev_index], axis=1)) / float(len(y_pred))
         p.add(len(padded_p),[('test_loss', loss), ('test_acc', acc)])
     loss = p.sum_values['test_loss'][0] / p.sum_values['test_loss'][1]
