@@ -183,8 +183,17 @@ def extended_tautologies(train, dev, glove):
     augment_weight = [0, 0.05, 0.15, 0.5]
     for w in augment_weight:
         new_train = train + augment_data[:int(len(train)*w)]
-	w_str =  str(w).replace('.','')
+	str =  str(w).replace('.','')
         model = models.init_model()
 	models.train_model(new_train, dev, glove, model = model, model_dir = 'models/aug' + w_str)
         
-        
+def test_tautologies(train, dev, glove, paths = ['aug0','aug005','aug015','aug05']):
+    testsets = [dev, generate_tautologies(dev), generate_contradictions(dev), generate_neutral(dev)]
+    names = ['dev' , 'ent', 'contr' ,'neu']
+    for path in paths:
+        print path
+        model_path = misc.best_model_path('models/' + path)
+        model = models.load_model(model_path)
+        accs = [models.test_model(model, dataset, glove) for dataset in testsets]
+	for name, dataset, acc in zip (names, testsets, accs):
+	    print name, acc, len(dataset)

@@ -7,7 +7,7 @@ Created on Mon Jan 11 12:28:46 2016
 import sys
 sys.path.append('../keras')
 from keras.models import Sequential
-from keras.layers.core import Dense, Dropout, Activation
+from keras.layers.core import Dense, Dropout, Activation, Masking
 from keras.layers.recurrent import LSTM
 from keras.regularizers import l2
 from keras.optimizers import Adam
@@ -44,8 +44,9 @@ import csv
 
 def init_model(embed_size = 300, hidden_size = 100, lr = 0.001, dropout = 0.0, reg = 0.0):
     model = Sequential()
-    #model.add(Masking(mask_value=0, input_shape = (None, embed_size)))
-    model.add(Dropout(dropout, input_shape = (None, embed_size)))
+    model.add(Masking(mask_value=0, input_shape = (None, embed_size)))
+    #model.add(Dropout(dropout, input_shape = (None, embed_size)))
+    model.add(Dropout(dropout))
     model.add(LSTM(hidden_size))
     model.add(Dense(3, W_regularizer=l2(reg)))
     model.add(Dropout(dropout))
@@ -66,7 +67,8 @@ def train_model(train, dev, glove, model, model_dir =  'models/curr_model', nb_e
          os.makedirs(model_dir)
     for e in range(nb_epochs): 
         print "Epoch ", e
-        mb = load_data.get_minibatches_idx(len(train), batch_size, shuffle=True)
+        #mb = load_data.get_minibatches_idx(len(train), batch_size, shuffle=True)
+	mb = load_data.get_minibatches_same_premise(train, batch_size)
         #mb = load_data.get_minibatches_idx_bucketing([len(ex[0]) + len(ex[1]) for ex in train], batch_size, shuffle=True)
         p = Progbar(len(train))
         for i, train_index in mb:
@@ -141,7 +143,8 @@ def train_model_graph(train, dev, glove, model = init_model(), model_dir =  'mod
  
  
 def validate_model_graph(model, X_dev_p, X_dev_h, y_dev, batch_size):
-    dmb = load_data.get_minibatches_idx(len(X_dev_p), batch_size, shuffle=True)
+    #dmb = load_data.get_minibatches_idx(len(X_dev_p), batch_size, shuffle=True)
+    dmb = load_data.get_minibatches_same_premise(dev, batch_size)
     p = Progbar(len(X_dev_p))
     for i, dev_index in dmb:
         padded_p = load_data.pad_sequences(X_dev_p[dev_index], dim = len(X_dev_p[0][0]))

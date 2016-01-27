@@ -195,6 +195,37 @@ def get_minibatches_idx_bucketing(lengths, minibatch_size, shuffle=False):
     if shuffle:
 	np.random.shuffle(minibatches)
     return zip(range(len(minibatches)), minibatches)
+
+def get_minibatches_same_premise(data, minibatch_size):
+    idx_list = np.arange(len(data), dtype="int32")
+    prem_groups = {}
+    for i in range(len(data)):
+        premise = " ".join(data[i][0])
+        if premise not in prem_groups:
+            prem_groups[premise] = []
+        prem_groups[premise].append(i)
+    
+    group_list = prem_groups.values()
+     
+    np.random.shuffle(group_list)
+    minibatches = []
+    minibatch = []
+ 
+    for group in group_list:
+        if len(minibatch + group) < minibatch_size:
+            minibatch += group
+        else:
+            minibatches.append(np.array(minibatch))
+            minibatch = group
+    if len(minibatch) > 0:
+        minibatches.append(np.array(minibatch))
+
+    return zip(range(len(minibatches)), minibatches)
+
+        
+            
+
+        
     
 def prepare_word2vec(model, snli_path):
     train, dev, test = load_all_snli_datasets(snli_path)
@@ -225,4 +256,5 @@ def prepare_word2vec(model, snli_path):
         
         
         
+
 
