@@ -35,7 +35,7 @@ def attention_model(hidden_size, embed_size):
     return graph
     
 def graph_train_batch(train, dev, model, glove, embed_size = 300):
-    P,H,y = load_data.prepare_split_vec_dataset(train[:154], glove)
+    P,H,y = load_data.prepare_split_vec_dataset(train[:128], glove)
     padded_P = load_data.pad_sequences(P, dim = embed_size)
     padded_H = load_data.pad_sequences(H, dim = embed_size)
     data = {'premise_input': padded_P, 'hypo_input': padded_H, 'output' : y}

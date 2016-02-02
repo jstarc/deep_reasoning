@@ -96,7 +96,7 @@ def train_model(train, dev, glove, model, model_dir =  'models/curr_model', nb_e
         writer = csv.writer(f)
         writer.writerows(stats)
 
-def train_model_graph(train, dev, glove, model = init_model(), model_dir =  'models/curr_model', nb_epochs = 20, batch_size = 128, worse_steps = 4):
+def train_model_graph(train, dev, glove, model, model_dir =  'models/curr_model', nb_epochs = 20, batch_size = 128, worse_steps = 4):
     validation_freq = 1000
     #X_dev, y_dev = load_data.prepare_vec_dataset(dev, glove)
     X_dev_p, X_dev_h, y_dev = load_data.prepare_split_vec_dataset(dev, glove)
@@ -143,14 +143,13 @@ def train_model_graph(train, dev, glove, model = init_model(), model_dir =  'mod
  
  
 def validate_model_graph(model, X_dev_p, X_dev_h, y_dev, batch_size):
-    #dmb = load_data.get_minibatches_idx(len(X_dev_p), batch_size, shuffle=True)
-    dmb = load_data.get_minibatches_same_premise(dev, batch_size)
+    dmb = load_data.get_minibatches_idx(len(X_dev_p), batch_size, shuffle=True)
     p = Progbar(len(X_dev_p))
     for i, dev_index in dmb:
         padded_p = load_data.pad_sequences(X_dev_p[dev_index], dim = len(X_dev_p[0][0]))
         padded_h = load_data.pad_sequences(X_dev_h[dev_index], dim = len(X_dev_p[0][0]))
         data = {'premise_input': padded_p, 'hypo_input': padded_h}
-        y_pred = model.predict(data)
+        y_pred = model.predict(data)['output']
         loss = -np.sum(y_dev[dev_index] * np.log(y_pred)) / float(len(y_pred))
         acc =  np.sum(np.argmax(y_pred, axis=1) == np.argmax(y_dev[dev_index], axis=1)) / float(len(y_pred))
         p.add(len(padded_p),[('test_loss', loss), ('test_acc', acc)])

@@ -104,7 +104,7 @@ def prepare_split_vec_dataset(dataset, glove):
         if example[2] == '-':
             continue
         P.append(load_word_vecs(example[0], glove))
-        H.append(load_word_vecs(example[0], glove))
+        H.append(load_word_vecs(example[1], glove))
         y.append(LABEL_LIST.index(example[2]))
     one_hot_y = np.zeros((len(y), len(LABEL_LIST)))
     one_hot_y[np.arange(len(y)), y] = 1
