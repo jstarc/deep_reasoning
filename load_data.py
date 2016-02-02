@@ -37,13 +37,15 @@ def import_snli_file(filename):
             data.append(json.loads(line))
     return data
     
-def prepare_snli_dataset(json_data, exclude_undecided = True):
+def prepare_snli_dataset(json_data, add_null_token = False, exclude_undecided = True):
     dataset = []
     for example in json_data:
         sent1 = tokenize_from_parse_tree(example['sentence1_binary_parse'])
         sent2 = tokenize_from_parse_tree(example['sentence2_binary_parse'])
         gold = example['gold_label']
 	if not exclude_undecided or gold in LABEL_LIST:
+            if add_null_token:
+                sent1 = ['null'] + sent1
             dataset.append((sent1, sent2, gold))
     return dataset
     
@@ -70,13 +72,13 @@ def repackage_glove(input_filename, output_filename, snli_path):
     print "Glove imported"
     write_glove(output_filename, glove)
 
-def load_all_snli_datasets(snli_path):
+def load_all_snli_datasets(snli_path, add_null_token = False):
     print "Loading training data"
-    train = prepare_snli_dataset(import_snli_file(snli_path + 'snli_1.0_train.jsonl'))
+    train = prepare_snli_dataset(import_snli_file(snli_path + 'snli_1.0_train.jsonl'), add_null_token)
     print "Loading dev data"
-    dev = prepare_snli_dataset(import_snli_file(snli_path + 'snli_1.0_dev.jsonl'))
+    dev = prepare_snli_dataset(import_snli_file(snli_path + 'snli_1.0_dev.jsonl'), add_null_token)
     print "Loading test data"
-    test = prepare_snli_dataset(import_snli_file(snli_path + 'snli_1.0_test.jsonl'))
+    test = prepare_snli_dataset(import_snli_file(snli_path + 'snli_1.0_test.jsonl'), add_null_token)
     print "Data loaded"
     return train, dev, test
 
@@ -223,10 +225,7 @@ def get_minibatches_same_premise(data, minibatch_size):
     return zip(range(len(minibatches)), minibatches)
 
         
-            
-
-        
-    
+                
 def prepare_word2vec(model, snli_path):
     train, dev, test = load_all_snli_datasets(snli_path)
     tokens = all_tokens(train) | all_tokens(dev) | all_tokens(test)

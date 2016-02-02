@@ -96,7 +96,7 @@ def train_model(train, dev, glove, model, model_dir =  'models/curr_model', nb_e
         writer = csv.writer(f)
         writer.writerows(stats)
 
-def train_model_graph(train, dev, glove, model, model_dir =  'models/curr_model', nb_epochs = 20, batch_size = 128, worse_steps = 4):
+def train_model_graph(train, dev, glove, model, model_dir =  'models/curr_model', nb_epochs = 20, batch_size = 128, worse_steps = 5):
     validation_freq = 1000
     #X_dev, y_dev = load_data.prepare_vec_dataset(dev, glove)
     X_dev_p, X_dev_h, y_dev = load_data.prepare_split_vec_dataset(dev, glove)
