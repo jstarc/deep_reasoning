@@ -198,6 +198,45 @@ def get_minibatches_idx_bucketing(lengths, minibatch_size, shuffle=False):
 	np.random.shuffle(minibatches)
     return zip(range(len(minibatches)), minibatches)
 
+def get_minibatches_idx_bucketing_both(data, ranges, minibatch_size, shuffle=False):
+    """
+    Used to shuffle the dataset at each iteration accoring to lengths.
+    """
+    
+    idx_list = create_buckets(data, ranges)
+    n = len(idx_list)
+    minibatches = []
+    minibatch_start = 0
+    for i in range(n // minibatch_size):
+        minibatches.append(idx_list[minibatch_start:
+                                    minibatch_start + minibatch_size])
+        minibatch_start += minibatch_size
+
+    if (minibatch_start != n):
+        # Make a minibatch out of what is left
+        minibatches.append(idx_list[minibatch_start:])
+    if shuffle:
+        np.random.shuffle(minibatches)
+    return zip(range(len(minibatches)), minibatches)
+
+def create_buckets(data, ranges):
+    result = [[] for x in range((len(ranges[0]) + 1) * (len(ranges[1]) + 1))]
+    for e in range(len(data)):
+        plen = len(data[e][0])
+        hlen = len(data[e][1])
+        pi = 0
+        while pi < len(ranges[0]) and plen > ranges[0][pi]:
+            pi += 1
+        hi = 0
+        while hi < len(ranges[1]) and hlen > ranges[1][hi]:
+            hi += 1
+        result[pi * (len(ranges[1]) + 1) + hi].append(e)
+    master = []
+    for r in result:
+        np.random.shuffle(r)
+        master += r
+    return master
+
 def get_minibatches_same_premise(data, minibatch_size):
     idx_list = np.arange(len(data), dtype="int32")
     prem_groups = {}
