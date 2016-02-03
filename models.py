@@ -98,7 +98,6 @@ def train_model(train, dev, glove, model, model_dir =  'models/curr_model', nb_e
 
 def train_model_graph(train, dev, glove, model, model_dir =  'models/curr_model', nb_epochs = 20, batch_size = 128, worse_steps = 5):
     validation_freq = 1000
-    #X_dev, y_dev = load_data.prepare_vec_dataset(dev, glove)
     X_dev_p, X_dev_h, y_dev = load_data.prepare_split_vec_dataset(dev, glove)
     test_losses = []
     stats = [['iter', 'train_loss', 'dev_loss', 'dev_acc']]
@@ -110,8 +109,8 @@ def train_model_graph(train, dev, glove, model, model_dir =  'models/curr_model'
     
     for e in range(nb_epochs): 
         print "Epoch ", e
-        mb = load_data.get_minibatches_idx(len(train), batch_size, shuffle=True)
-        #mb = load_data.get_minibatches_idx_bucketing([len(ex[0]) + len(ex[1]) for ex in train], batch_size, shuffle=True)
+        #mb = load_data.get_minibatches_idx(len(train), batch_size, shuffle=True)
+        mb = load_data.get_minibatches_idx_bucketing_both(train,([9,11,13,16,22],[6,7,8,10,13]), batch_size, shuffle=True)
         p = Progbar(len(train))
         for i, train_index in mb:
             X_train_p, X_train_h, y_train = load_data.prepare_split_vec_dataset([train[k] for k in train_index], glove)
