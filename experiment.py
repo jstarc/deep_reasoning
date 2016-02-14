@@ -22,7 +22,7 @@ import os
 
 if __name__ == "__main__":
     train, dev, test = load_data.load_all_snli_datasets('data/snli_1.0/')
-    glove = load_data.import_glove('data/snli_vectors_300.txt')
+    glove = load_data.import_glove('data/snli_vectors.txt')
 
 
 def grid_experiments(train, dev, glove, embed_size = 300, hidden_size = 100):

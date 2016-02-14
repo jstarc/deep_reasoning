@@ -9,23 +9,26 @@ from keras.models import Sequential
 from seq2seq.models import Seq2seq, SimpleSeq2seq, AttentionSeq2seq
 import load_data
 from keras.utils.generic_utils import Progbar
-PREM_LEN = 50
-HYPO_LEN = 30
+PREM_LEN = 22
+HYPO_LEN = 12
 
 
 def make_model(hidden_size = 10, embed_size = 50, batch_size = 64):
     
-    model = AttentionSeq2seq(
-        batch_input_shape = (batch_size, PREM_LEN, embed_size),
+    batch_input_shape = (batch_size, PREM_LEN, embed_size)
+    model = Sequential()
+    seq2seq = AttentionSeq2seq(
+        batch_input_shape = batch_input_shape,
         input_dim = embed_size,
         hidden_dim=embed_size,
         output_dim=embed_size,
         output_length=HYPO_LEN,
-        depth=1
+        depth=1,
+        bidirectional=False,
     )
 
-    #model.add(seq2seq, input_shape= (None, None, embed_size))
-    model.compile(loss='mse', optimizer='rmsprop')
+    model.add(seq2seq)
+    model.compile(loss='mse', optimizer='rmsprop')#, sample_weight_mode="temporal")
     return model
 
 def generation_test(train, glove, model, batch_size = 64):
@@ -52,31 +55,32 @@ def train_model_generation(train, dev, glove, model, model_dir =  'models/curr_m
 
     for e in range(nb_epochs):
         print "Epoch ", e
-        #mb = load_data.get_minibatches_idx(len(train), batch_size, shuffle=True)
-        mb = load_data.get_minibatches_idx_bucketing_both(train,([9,11,13,16,22],[6,7,8,10,13]), batch_size, shuffle=True)
+        mb = load_data.get_minibatches_idx(len(train), batch_size, shuffle=True)
+        #mb = load_data.get_minibatches_idx_bucketing_both(train,([9,11,13,16,22],[6,7,8,10,13]), batch_size, shuffle=True)
         p = Progbar(len(train))
         for i, train_index in mb:
             if len(train_index) != batch_size:
                 continue
             X_train_p, X_train_h, _ = load_data.prepare_split_vec_dataset([train[k] for k in train_index], glove)
-            padded_p = load_data.pad_sequences(X_train_p, maxlen = PREM_LEN, dim = embed_size)
-            padded_h = load_data.pad_sequences(X_train_h, maxlen = HYPO_LEN, dim = embed_size)
-            train_loss = float(model.train_on_batch(padded_p, padded_h)[0])
-            p.add(len(padded_p),[('train_loss', train_loss)])
+            padded_p = load_data.pad_sequences(X_train_p, maxlen = PREM_LEN, dim = embed_size, padding = 'pre')
+            padded_h = load_data.pad_sequences(X_train_h, maxlen = HYPO_LEN, dim = embed_size, padding = 'post')
+            sw = (np.sum(padded_h, axis = 2) != 0).astype(float)
+            train_loss = float(model.train_on_batch(padded_p, padded_h)[0])#, sample_weight = sw)[0])
+            p.add(len(train_index),[('train_loss', train_loss)])
             iter = e * len(mb) + i + 1
-            if iter % validation_freq == 0:
-                print
-                dev_loss = validate_model_generation(model, X_dev_p, X_dev_h, batch_size)
-                print
-                test_losses.append(dev_loss)
-                stats.append([iter, train_loss, dev_loss])
-                if (np.array(test_losses[-worse_steps:]) > min(test_losses)).all():
-                    exit_loop = True
-                    break
-                else:
-                    fn = model_dir + '/model' '~' + str(iter)
-                    open(fn + '.json', 'w').write(model.to_json())
-                    model.save_weights(fn + '.h5')
+            #if iter % validation_freq == 0:
+        sys.stdout.write('\n')
+        dev_loss = validate_model_generation(model, X_dev_p, X_dev_h, batch_size)
+        sys.stdout.write('\n\n')
+        test_losses.append(dev_loss)
+        stats.append([iter,  p.sum_values['train_loss'][0] / p.sum_values['train_loss'][1], dev_loss])
+        if (np.array(test_losses[-worse_steps:]) > min(test_losses)).all():
+            exit_loop = True
+            break
+        else:
+            fn = model_dir + '/model' '~' + str(iter)
+            open(fn + '.json', 'w').write(model.to_json())
+            model.save_weights(fn + '.h5')
         if exit_loop:
             break
     with open(model_dir + '/stats.csv', 'w') as f:
@@ -89,10 +93,10 @@ def validate_model_generation(model, X_dev_p, X_dev_h, batch_size):
     for i, dev_index in dmb:
         if len(dev_index) != batch_size:
             continue
-        padded_p = load_data.pad_sequences(X_dev_p[dev_index], maxlen=PREM_LEN, dim = len(X_dev_p[0][0]))
-        padded_h = load_data.pad_sequences(X_dev_h[dev_index], maxlen=HYPO_LEN, dim = len(X_dev_p[0][0]))
+        padded_p = load_data.pad_sequences(X_dev_p[dev_index], maxlen=PREM_LEN, dim = len(X_dev_p[0][0]), padding = 'pre')
+        padded_h = load_data.pad_sequences(X_dev_h[dev_index], maxlen=HYPO_LEN, dim = len(X_dev_p[0][0]), padding = 'post')
         loss, acc = model.test_on_batch(padded_p, padded_h, accuracy=True)
-        p.add(len(padded_p),[('test_loss',loss)])
+        p.add(len(dev_index),[('test_loss',loss)])
     loss = p.sum_values['test_loss'][0] / p.sum_values['test_loss'][1]
     return loss
 
@@ -132,12 +136,25 @@ def softmax(w, t = 1.0):
     e = np.exp(np.array(w) / t)
     dist = e / np.sum(e)
     return dist
-    
+
+#glove_mat = np.array(glove.values())    
 #glove_mat = glove_mat / np.linalg.norm(glove_mat, axis = 1)[:,None]
 
-def transform_dataset(dataset):
+def transform_dataset(dataset, class_str = 'entailment', max_prem_len = sys.maxint, max_hypo_len = sys.maxint):
     uniq = set()
     result = []
     for ex in dataset:
-        if ex[2] == 'entailment' and :
-            pass
+        prem_str = " ".join(ex[0])
+        if ex[2] == class_str and prem_str not in uniq and len(ex[0]) <= max_prem_len and len(ex[1]) <= max_hypo_len:
+            result.append(ex)
+            uniq.add(prem_str)
+    return result
+
+def word_overlap(premise, hypo):
+    return len([h for h in hypo if h in premise]) / float(len(hypo))    
+
+def predict_lexicalize(example, model, glove, glove_mat):
+    pred = generation_predict(model, glove, example[0])
+    print " ".join(example[0])
+    print " ".join(example[1])
+    print " ".join(project(pred, glove, glove_mat))           
