@@ -28,7 +28,7 @@ def make_model(hidden_size = 10, embed_size = 50, batch_size = 64):
     )
 
     model.add(seq2seq)
-    model.compile(loss='mse', optimizer='rmsprop')#, sample_weight_mode="temporal")
+    model.compile(loss='mse', optimizer='rmsprop', sample_weight_mode="temporal")
     return model
 
 def generation_test(train, glove, model, batch_size = 64):
@@ -65,12 +65,12 @@ def train_model_generation(train, dev, glove, model, model_dir =  'models/curr_m
             padded_p = load_data.pad_sequences(X_train_p, maxlen = PREM_LEN, dim = embed_size, padding = 'pre')
             padded_h = load_data.pad_sequences(X_train_h, maxlen = HYPO_LEN, dim = embed_size, padding = 'post')
             sw = (np.sum(padded_h, axis = 2) != 0).astype(float)
-            train_loss = float(model.train_on_batch(padded_p, padded_h)[0])#, sample_weight = sw)[0])
+            train_loss = float(model.train_on_batch(padded_p, padded_h, sample_weight = sw)[0])
             p.add(len(train_index),[('train_loss', train_loss)])
             iter = e * len(mb) + i + 1
             #if iter % validation_freq == 0:
         sys.stdout.write('\n')
-        dev_loss = validate_model_generation(model, X_dev_p, X_dev_h, batch_size)
+        dev_loss = validate_model_generation(model, X_dev_p, X_dev_h, glove, batch_size)
         sys.stdout.write('\n\n')
         test_losses.append(dev_loss)
         stats.append([iter,  p.sum_values['train_loss'][0] / p.sum_values['train_loss'][1], dev_loss])
@@ -87,7 +87,9 @@ def train_model_generation(train, dev, glove, model, model_dir =  'models/curr_m
         writer = csv.writer(f)
         writer.writerows(stats)
 
-def validate_model_generation(model, X_dev_p, X_dev_h, batch_size):
+def validate_model_generation(model, X_dev_p, X_dev_h, glove, batch_size):
+    glove_mat = np.array(glove.values())
+    glove_mat = glove_mat / np.linalg.norm(glove_mat, axis = 1)[:,None]    
     dmb = load_data.get_minibatches_idx(len(X_dev_p), batch_size, shuffle=True)
     p = Progbar(len(X_dev_p))
     for i, dev_index in dmb:
@@ -95,7 +97,8 @@ def validate_model_generation(model, X_dev_p, X_dev_h, batch_size):
             continue
         padded_p = load_data.pad_sequences(X_dev_p[dev_index], maxlen=PREM_LEN, dim = len(X_dev_p[0][0]), padding = 'pre')
         padded_h = load_data.pad_sequences(X_dev_h[dev_index], maxlen=HYPO_LEN, dim = len(X_dev_p[0][0]), padding = 'post')
-        loss, acc = model.test_on_batch(padded_p, padded_h, accuracy=True)
+        sw = (np.sum(padded_h, axis = 2) != 0).astype(float) 
+        loss, acc = model.test_on_batch(padded_p, padded_h, accuracy=True,sample_weight = sw)
         p.add(len(dev_index),[('test_loss',loss)])
     loss = p.sum_values['test_loss'][0] / p.sum_values['test_loss'][1]
     return loss
@@ -149,6 +152,13 @@ def transform_dataset(dataset, class_str = 'entailment', max_prem_len = sys.maxi
             result.append(ex)
             uniq.add(prem_str)
     return result
+
+def add_eol_to_hypo(dataset):
+    for ex in dataset:
+        if ex[1][-1] != '.':
+            ex[1].append('.')
+        
+    
 
 def word_overlap(premise, hypo):
     return len([h for h in hypo if h in premise]) / float(len(hypo))    
