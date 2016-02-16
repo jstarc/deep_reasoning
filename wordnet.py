@@ -5,6 +5,8 @@ Created on Tue Jan 26 19:10:52 2016
 @author: Janez
 """
 
+import re
+
 def proc_data(filename):
     with open(filename, 'r') as f:
         count = 0    
@@ -112,32 +114,83 @@ def create_hypernym_map(syn_map):
     for syn in syn_map.values():
         if syn.relation.get('hypernym') and len(syn.labels) > 0:
             for hypname in syn.relation['hypernym']:
-                if len(syn_map[hypname].labels) > 0:
+                if hypname in syn_map and len(syn_map[hypname].labels) > 0:
                     for label1 in syn.labels:
                         for label2 in syn_map[hypname].labels:
                             if label1.lower() not in label_map:
                                 label_map[label1.lower()] = set()
                             label_map[label1.lower()].add(label2.lower()) 
     return label_map
+
+def create_hypernym_map2(lab_map, syn_map):
+    result = {}
+    for lab in lab_map:
+        for syn in lab_map[lab]:
+            if syn.relation.get('hypernym') and len(syn.labels) > 0:
+                for hypname in syn.relation['hypernym']:
+                    if hypname in syn_map and len(syn_map[hypname].labels) > 0:
+                        for label2 in syn_map[hypname].labels:
+                            if lab.lower() not in result:
+                                result[lab.lower()] = set()
+                            result[lab.lower()].add(label2.lower()) 
+    return result
     
-def create_label_to_concept_map(syns):
+def create_label_to_concept_map(syns, pos_filter=''):
     mapping = {}
     for s in syns:
-        for lab in syns[s].labels:
-            if lab not in mapping:
-                mapping[lab.lower()] = []
-            mapping[lab.lower()].append(syns[s])
+        syn = syns[s]
+        if len(pos_filter) > 0 and 'part_of_speech' in syn.relation \
+            and syn.relation['part_of_speech'][0] == pos_filter:
+                for lab in syn.labels:
+                    if lab not in mapping:
+                        mapping[lab.lower()] = []
+                    mapping[lab.lower()].append(syn)
     return mapping
 
 def filter_lab_map(lab_map):
+    new_map = {}    
     for lab in lab_map:
         if len(lab_map[lab]) > 1:
-            
+            new_map[lab] = filter_syn_mapping(lab, lab_map[lab])
+        else:
+            new_map[lab] = lab_map[lab]
+    return new_map
+    
 def filter_syn_mapping(label, syns):
-    for s in syns:
-        if 'type' in s.relation and s.relation['type'][0] = 'Synset':
-            if 'type' in s.relation and s.relation['type'][0] = 'Synset':
+    bmap = [True] * len(syns)
+    for i in range(len(syns)):
+        s = syns[i]
+        if 'type' not in s.relation or s.relation['type'][0] != 'Synset':
+           if mark_bit_map(bmap, i):
+               break
+        if not is_informative_same_as(s, label):
+            if mark_bit_map(bmap, i):
+               break
+    return [i for (i, v) in zip(syns, bmap) if v]
+         
+def is_informative_same_as(syn, label):
+    if 'sameAs' in syn.relation:
+        for s2 in syn.relation['sameAs']:
+            pattern = re.compile('^synset-'+ label +'-[a-z]*-1$')
+            if pattern.match(s2):
+                return True
+    return False
+    
+def lab_map_to_syn_map(lab_map):
+    syn_map = {}
+    for syn_list in lab_map.values():
+        for syn in syn_list:
+            syn_map[syn.name] = syn
+    return syn_map
             
+        
+def mark_bit_map(bmap, index):
+    if sum(bmap) > 1:
+        bmap[index] = False
+        return False
+    return True
+
+
             
     
 def match_string(list_string, mapping, substring_len):
