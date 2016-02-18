@@ -98,8 +98,10 @@ def display_perfomances(folder = 'models/', metric='dev_acc'):
 	    continue
 
         stats = pa.read_csv(stats_path)
-	index = stats[metric].argmax()
-	print "{0:.3f}".format(stats.iloc[index][metric]), subfolder, stats.iloc[index]['iter']
+        
+        if 'dev_acc' in stats.columns:
+	    index = stats[metric].argmax()
+	    print "{0:.3f}".format(stats.iloc[index][metric]), subfolder, stats.iloc[index]['iter']
 			 
 def best_model_path(folder):
     stats_path = os.path.join(folder, 'stats.csv')	   
@@ -108,5 +110,3 @@ def best_model_path(folder):
     stats = pa.read_csv(stats_path)
     index = stats['dev_acc'].argmax()
     return folder + '/model~' + str(stats['iter'][index])
-                     
-

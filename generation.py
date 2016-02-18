@@ -9,11 +9,12 @@ import csv
 from keras.models import Sequential, Graph
 from keras.layers.embeddings import Embedding
 from keras.layers.core import Flatten
-from keras.layers.core import Dense, Merge, RepeatVector, TimeDistributedDense
+from keras.layers.core import Dense, Merge, RepeatVector, TimeDistributedDense, Activation
 
  
 from seq2seq.models import Seq2seq, SimpleSeq2seq, AttentionSeq2seq
 import load_data
+import misc
 from keras.utils.generic_utils import Progbar
 PREM_LEN = 22
 HYPO_LEN = 12
@@ -38,14 +39,14 @@ def make_model(hidden_size = 10, embed_size = 50, batch_size = 64):
     model.compile(loss='mse', optimizer='rmsprop', sample_weight_mode="temporal")
     return model
     
-def make_embed_model(vocab_size, hidden_size = 10, embed_size = 50, batch_size = 64):
+def make_embed_model(examples ,vocab_size, hidden_size = 10, embed_size = 50, batch_size = 64):
     
     batch_input_shape = (batch_size, PREM_LEN, embed_size)
     
     em_model = Sequential()    
-    em_model.add(Embedding(vocab_size, embed_size, input_length = 1))
+    em_model.add(Embedding(examples, embed_size, input_length = 1))
     em_model.add(Flatten())
-    #em_model.add(Dense(embed_size))
+    em_model.add(Dense(embed_size))
     em_model.add(RepeatVector(PREM_LEN))
     
     seq2seq = AttentionSeq2seq(
@@ -66,9 +67,11 @@ def make_embed_model(vocab_size, hidden_size = 10, embed_size = 50, batch_size =
     graph.add_node(em_model, name='em_model', input='embed_input')
     
     graph.add_node(seq2seq, name='seq2seq', inputs=['premise_input', 'em_model'], merge_mode='concat')
-    graph.add_output(name='output', input='seq2seq')
+    graph.add_node(TimeDistributedDense(vocab_size), name='tdd', input='seq2seq')
+    graph.add_node(Activation('softmax'), name='softmax', input='tdd')
+    graph.add_output(name='output', input='softmax')
     
-    graph.compile(loss={'output':'mse'}, optimizer='rmsprop')
+    graph.compile(loss={'output':'categorical_crossentropy'}, optimizer='adam', sample_weight_modes={'output':'temporal'})
     return graph
 
 def generation_test(train, glove, model, batch_size = 64):
@@ -143,9 +146,10 @@ def train_model_embed(train, dev, glove, model, model_dir =  'models/curr_model'
     #stats = [['iter', 'train_loss', 'dev_loss']]
     #exit_loop = False
     embed_size = X_dev_p[0].shape[1]
-
-    if not os.path.exists(model_dir):
-         os.makedirs(model_dir)
+    glove_keys = glove.keys()
+    glove_index = {glove_keys[i]:i for i in range(len(glove_keys))}
+    #if not os.path.exists(model_dir):
+    #     os.makedirs(model_dir)
 
     for e in range(nb_epochs):
         print "Epoch ", e
@@ -155,17 +159,15 @@ def train_model_embed(train, dev, glove, model, model_dir =  'models/curr_model'
         for i, train_index in mb:
             if len(train_index) != batch_size:
                 continue
-            X_train_p, X_train_h, _ = load_data.prepare_split_vec_dataset([train[k] for k in train_index], glove)
+            X_train_p,_ ,_ = load_data.prepare_split_vec_dataset([train[k] for k in train_index], glove)
+            X_train_h = load_data.prepare_one_hot_sents([train[k][1] for k in train_index], glove_index)
             padded_p = load_data.pad_sequences(X_train_p, maxlen = PREM_LEN, dim = embed_size, padding = 'pre')
-            padded_h = load_data.pad_sequences(X_train_h, maxlen = HYPO_LEN, dim = embed_size, padding = 'post')
+            padded_h = load_data.pad_sequences(X_train_h, maxlen = HYPO_LEN, dim = len(glove_index), padding = 'post')
             data = {'premise_input': padded_p, 'embed_input': np.expand_dims(np.array(train_index), axis=1), 'output' : padded_h}
-            train_loss = float(model.train_on_batch(data)[0])
-            #sw = (np.sum(padded_h, axis = 2) != 0).astype(float)
-            #train_loss = float(model.train_on_batch(padded_p, padded_h, sample_weight = sw)[0])
+            sw = (np.sum(padded_h, axis = 2) != 0).astype(float)
+            train_loss = float(model.train_on_batch(data, sample_weight={'output':sw})[0])
             p.add(len(train_index),[('train_loss', train_loss)])
-            #iter = e * len(mb) + i + 1
-            #if iter % validation_freq == 0:
-        #sys.stdout.write('\n')
+        sys.stdout.write('\n')
         #dev_loss = validate_model_generation(model, X_dev_p, X_dev_h, glove, batch_size)
         #sys.stdout.write('\n\n')
         #test_losses.append(dev_loss)
@@ -208,10 +210,28 @@ def generation_predict(model, glove, premise, batch_size = 64):
     model_pred = model.predict_on_batch(X)
     return model_pred[0][0]
 
+def generation_predict_embed(model, glove, premise, embed_index,  batch_size = 64):
+    X_p = load_data.load_word_vecs(premise, glove)
+    X_p = load_data.pad_sequences([X_p], maxlen=PREM_LEN, dim = len(X_p[0]))
+    X = np.zeros((batch_size, X_p.shape[1], X_p.shape[2]))
+    X[0] = X_p[0]
+    E = np.zeros((batch_size, 1))
+    E[0][0] = embed_index
+    data = {'premise_input': X, 'embed_input': E}
+    model_pred = model.predict_on_batch(data)
+    return model_pred['output'][0]
+
 def project(embed_sent, glove, glove_mat):
     result = []
     for e in embed_sent:
         result.append(get_word(e, glove, glove_mat))
+    return result
+
+def project2(embed_sent, glove):
+    result = []
+    ind = np.argmax(embed_sent, axis = 1)
+    for i in ind:
+        result.append(glove.keys()[i])
     return result
 
 def rank_sent(premise, hypothesis, model, glove, glove_mat):
@@ -264,3 +284,33 @@ def predict_lexicalize(example, model, glove, glove_mat):
     print " ".join(example[0])
     print " ".join(example[1])
     print " ".join(project(pred, glove, glove_mat))           
+
+
+def hypo_to_string(hypo, eos = '.'):
+    if eos in hypo:
+        ind = hypo.index(eos)
+        return " ".join(hypo[:ind + 1])
+    else:
+        return " ".join(hypo)
+ 
+
+def test_genmodel(gen_model, classify_model, train, dev, glove, glove_alter):
+    dev_count = 10
+    gens_count = 10
+    glove_mat = np.array(glove.values())
+    glove_mat = glove_mat / np.linalg.norm(glove_mat, axis = 1)[:,None]
+    
+    for ex in dev[:dev_count]:
+        print " ".join(ex[0])
+        print " ".join(ex[1])
+        print "Generations: "
+        for train_index in np.random.random_integers(0, len(train), gens_count):
+            pred = generation_predict_embed(gen_model, glove, ex[0], train_index)
+            
+            #gen_lex = project(pred, glove, glove_mat)
+            gen_lex = project2(pred, glove)
+            gen_str = hypo_to_string(gen_lex)
+            probs = misc.predict_example(" ".join(ex[0]), gen_str, classify_model, glove_alter)
+            print probs[0][0][2], gen_str
+        print
+    
