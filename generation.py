@@ -52,22 +52,26 @@ def make_embed_model(examples ,vocab_size, hidden_size = 10, embed_size = 50, ba
     
     seq2seq = AttentionSeq2seq(
         batch_input_shape = batch_input_shape,
-        input_dim = embed_size * 2,
+        input_dim = embed_size * 2 + 3,
         hidden_dim=embed_size,
         output_dim=embed_size,
         output_length=HYPO_LEN,
         depth=1,
         bidirectional=False,
     )
+
+    class_model = Sequential()
+    class_model.add(RepeatVector(PREM_LEN))
     
     graph = Graph()
     graph.add_input(name='premise_input', batch_input_shape=batch_input_shape)
     graph.add_input(name='embed_input', batch_input_shape=(batch_size,1), dtype='int')
-    
+    graph.add_input(name='class_input', batch_input_shape=(batch_size,3))
     
     graph.add_node(em_model, name='em_model', input='embed_input')
-    
-    graph.add_node(seq2seq, name='seq2seq', inputs=['premise_input', 'em_model'], merge_mode='concat')
+    graph.add_node(class_model, name='class_model', input='class_input')    
+
+    graph.add_node(seq2seq, name='seq2seq', inputs=['premise_input', 'em_model', 'class_model'], merge_mode='concat')
     graph.add_node(TimeDistributedDense(vocab_size), name='tdd', input='seq2seq')
     graph.add_node(Activation('softmax'), name='softmax', input='tdd')
     graph.add_output(name='output', input='softmax')
@@ -185,11 +189,12 @@ def train_model_embed(train, dev, glove, model, model_dir =  'models/curr_model'
         for i, train_index in mb:
             if len(train_index) != batch_size:
                 continue
-            X_train_p,_ ,_ = load_data.prepare_split_vec_dataset([train[k] for k in train_index], glove)
+            X_train_p,_ , y_train = load_data.prepare_split_vec_dataset([train[k] for k in train_index], glove)
             X_train_h = load_data.prepare_one_hot_sents([train[k][1] for k in train_index], glove_index)
             padded_p = load_data.pad_sequences(X_train_p, maxlen = PREM_LEN, dim = embed_size, padding = 'pre')
             padded_h = load_data.pad_sequences(X_train_h, maxlen = HYPO_LEN, dim = len(glove_index), padding = 'post')
-            data = {'premise_input': padded_p, 'embed_input': np.expand_dims(np.array(train_index), axis=1), 'output' : padded_h}
+            
+            data = {'premise_input': padded_p, 'embed_input': np.expand_dims(np.array(train_index), axis=1),'class_input' : y_train, 'output' : padded_h}
             sw = (np.sum(padded_h, axis = 2) != 0).astype(float)
             train_loss = float(model.train_on_batch(data, sample_weight={'output':sw})[0])
             p.add(len(train_index),[('train_loss', train_loss)])
@@ -236,14 +241,16 @@ def generation_predict(model, glove, premise, batch_size = 64):
     model_pred = model.predict_on_batch(X)
     return model_pred[0][0]
 
-def generation_predict_embed(model, glove, premise, embed_index,  batch_size = 64):
+def generation_predict_embed(model, glove, premise, embed_index, class_index,  batch_size = 64):
     X_p = load_data.load_word_vecs(premise, glove)
     X_p = load_data.pad_sequences([X_p], maxlen=PREM_LEN, dim = len(X_p[0]))
     X = np.zeros((batch_size, X_p.shape[1], X_p.shape[2]))
     X[0] = X_p[0]
     E = np.zeros((batch_size, 1))
     E[0][0] = embed_index
-    data = {'premise_input': X, 'embed_input': E}
+    C = np.zeros((batch_size, 3))
+    C[0][class_index] = 1
+    data = {'premise_input': X, 'embed_input': E, 'class_input':C}
     model_pred = model.predict_on_batch(data)
     return model_pred['output'][0]
 
@@ -290,7 +297,9 @@ def transform_dataset(dataset, class_str = 'entailment', max_prem_len = sys.maxi
     result = []
     for ex in dataset:
         prem_str = " ".join(ex[0])
-        if ex[2] == class_str and prem_str not in uniq and len(ex[0]) <= max_prem_len and len(ex[1]) <= max_hypo_len:
+        if class_str == None:
+            prem_str += ex[2]
+        if  (class_str == None or ex[2] == class_str) and prem_str not in uniq and len(ex[0]) <= max_prem_len and len(ex[1]) <= max_hypo_len:
             result.append(ex)
             uniq.add(prem_str)
     return result
