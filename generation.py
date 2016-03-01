@@ -10,11 +10,12 @@ from keras.models import Sequential, Graph
 from keras.layers.embeddings import Embedding
 from keras.layers.core import Flatten
 from keras.layers.core import Dense, Merge, RepeatVector, TimeDistributedDense, Activation
-
+from keras.layers.recurrent import LSTM
  
 from seq2seq.models import Seq2seq, SimpleSeq2seq, AttentionSeq2seq
 import load_data
 import misc
+from hierarchical_softmax import HierarchicalSoftmax
 from keras.utils.generic_utils import Progbar
 PREM_LEN = 22
 HYPO_LEN = 12
@@ -39,6 +40,18 @@ def make_model(hidden_size = 10, embed_size = 50, batch_size = 64):
     model.compile(loss='mse', optimizer='rmsprop', sample_weight_mode="temporal")
     return model
     
+def make_adverse_model(generative_model, embed_size = 50, batch_size = 64):
+    discriminator = Sequential()
+    discriminator.add(LSTM(embed_size))
+    discriminator.add(Dense(1))
+    
+    batch_input_shape = (batch_size, PREM_LEN, embed_size)
+    
+    graph = Graph()
+    graph.add_input()
+        
+    
+    
 def make_embed_model(examples ,vocab_size, hidden_size = 10, embed_size = 50, batch_size = 64):
     
     batch_input_shape = (batch_size, PREM_LEN, embed_size)
@@ -62,13 +75,17 @@ def make_embed_model(examples ,vocab_size, hidden_size = 10, embed_size = 50, ba
     graph = Graph()
     graph.add_input(name='premise_input', batch_input_shape=batch_input_shape)
     graph.add_input(name='embed_input', batch_input_shape=(batch_size,1), dtype='int')
-    
+    graph.add_input(name='train_input', batch_input_shape=(batch_size, HYPO_LEN), dtype='int32')
     
     graph.add_node(em_model, name='em_model', input='embed_input')
     
     graph.add_node(seq2seq, name='seq2seq', inputs=['premise_input', 'em_model'], merge_mode='concat')
-    graph.add_node(TimeDistributedDense(vocab_size), name='tdd', input='seq2seq')
-    graph.add_node(Activation('softmax'), name='softmax', input='tdd')
+    #graph.add_node(TimeDistributedDense(vocab_size), name='tdd', input='seq2seq')
+    #graph.add_node(Activation('softmax'), name='softmax', input='tdd')
+    
+    graph.add_node(HierarchicalSoftmax(vocab_size, input_dim = embed_size, input_length = HYPO_LEN), 
+                   name = 'softmax', inputs=['seq2seq','train_input'], 
+                   merge_mode = 'join')
     graph.add_output(name='output', input='softmax')
     
     graph.compile(loss={'output':'categorical_crossentropy'}, optimizer='adam', sample_weight_modes={'output':'temporal'})
