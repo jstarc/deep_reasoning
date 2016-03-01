@@ -8,9 +8,10 @@ import numpy as np
 import csv
 from keras.models import Sequential, Graph
 from keras.layers.embeddings import Embedding
-from keras.layers.core import Flatten
+from keras.layers.recurrent import LSTM
+from keras.layers.core import Flatten, Lambda
 from keras.layers.core import Dense, Merge, RepeatVector, TimeDistributedDense, Activation
-
+from keras import backend as K
  
 from seq2seq.models import Seq2seq, SimpleSeq2seq, AttentionSeq2seq
 import load_data
@@ -44,7 +45,7 @@ def make_embed_model(examples ,vocab_size, hidden_size = 10, embed_size = 50, ba
     batch_input_shape = (batch_size, PREM_LEN, embed_size)
     
     em_model = Sequential()    
-    em_model.add(Embedding(examples, embed_size, input_length = 1))
+    em_model.add(Embedding(examples, embed_size, input_length = 1, batch_input_shape=(batch_size,1)))
     em_model.add(Flatten())
     em_model.add(Dense(embed_size))
     em_model.add(RepeatVector(PREM_LEN))
@@ -74,6 +75,31 @@ def make_embed_model(examples ,vocab_size, hidden_size = 10, embed_size = 50, ba
     graph.compile(loss={'output':'categorical_crossentropy'}, optimizer='adam', sample_weight_modes={'output':'temporal'})
     return graph
 
+def make_adverse_model(generative_model, embed_size = 50, batch_size = 64):
+    discriminator = Sequential()
+    discriminator.add(LSTM(embed_size, batch_input_shape=(batch_size, HYPO_LEN, embed_size)))
+    discriminator.add(Dense(1, activation='sigmoid'))    
+    batch_input_shape = (batch_size,PREM_LEN, embed_size)
+    
+    graph = Graph()
+    #graph.add_input(name='premise_input', batch_input_shape=batch_input_shape)
+    #graph.add_input(name='embed_input', batch_input_shape=(batch_size,1), dtype='int')
+    graph.add_node(generative_model, name = 'generative')#, inputs=['premise_input', 'embed_input'])
+    graph.add_input(name='training_hypo', batch_input_shape=(batch_size, HYPO_LEN, embed_size))
+    graph.add_shared_node(discriminator, name='shared', inputs=['training_hypo', 'generative'], merge_mode='join')
+    
+    def margin_opt(inputs):
+        print(inputs)
+        assert len(inputs) == 2, ('Margin Output needs '
+                              '2 inputs, %d given' % len(inputs))
+        u, v = inputs.values()
+        return K.sqrt(K.sum(K.square(u - v), axis=1, keepdims=True))
+    graph.add_node(Lambda(margin_opt), name = 'output2', input='shared', create_output = True)
+    graph.cache_enabled = False
+    graph.compile(loss={'output2':'mse'}, optimizer='sgd')
+    return graph
+        
+        
 def generation_test(train, glove, model, batch_size = 64):
     mb = load_data.get_minibatches_idx(len(train), batch_size, shuffle=True)
     p = Progbar(len(train))
