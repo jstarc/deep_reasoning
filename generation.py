@@ -19,10 +19,10 @@ from seq2seq.models import Seq2seq, SimpleSeq2seq, AttentionSeq2seq
 import load_data
 import misc
 from hierarchical_softmax import HierarchicalSoftmax
+from hierarchical_softmax import hs_categorical_crossentropy
 from keras.utils.generic_utils import Progbar
 PREM_LEN = 22
 HYPO_LEN = 12
-
 
 def make_model(hidden_size = 10, embed_size = 50, batch_size = 64):
     
@@ -55,7 +55,7 @@ def make_adverse_model(generative_model, embed_size = 50, batch_size = 64):
         
     
     
-def make_embed_model(examples ,vocab_size, hidden_size = 10, embed_size = 50, batch_size = 64):
+def make_embed_model(examples ,vocab_size, hidden_size = 10, embed_size = 50, batch_size = 64, hs = True, ci = True):
     
     batch_input_shape = (batch_size, PREM_LEN, embed_size)
     
@@ -65,9 +65,12 @@ def make_embed_model(examples ,vocab_size, hidden_size = 10, embed_size = 50, ba
     em_model.add(Dense(embed_size))
     em_model.add(RepeatVector(PREM_LEN))
     
+    input_dim = embed_size * 2
+    if ci:
+        input_dim += 3
     seq2seq = AttentionSeq2seq(
         batch_input_shape = batch_input_shape,
-        input_dim = embed_size * 2 + 3,
+        input_dim = input_dim,
         hidden_dim=embed_size,
         output_dim=embed_size,
         output_length=HYPO_LEN,
@@ -81,23 +84,29 @@ def make_embed_model(examples ,vocab_size, hidden_size = 10, embed_size = 50, ba
     graph = Graph()
     graph.add_input(name='premise_input', batch_input_shape=batch_input_shape)
     graph.add_input(name='embed_input', batch_input_shape=(batch_size,1), dtype='int')
-    graph.add_input(name='class_input', batch_input_shape=(batch_size,3))
-    graph.add_input(name='train_input', batch_input_shape=(batch_size, HYPO_LEN), dtype='int32')
-    
     graph.add_node(em_model, name='em_model', input='embed_input')
-    graph.add_node(class_model, name='class_model', input='class_input')   
     
-    graph.add_node(seq2seq, name='seq2seq', inputs=['premise_input', 'em_model', 'class_model'], merge_mode='concat')
-    #graph.add_node(TimeDistributedDense(vocab_size), name='tdd', input='seq2seq')
-    #graph.add_node(Activation('softmax'), name='softmax', input='tdd')
+    seq_inputs = ['premise_input', 'em_model']
     
-    graph.add_node(HierarchicalSoftmax(vocab_size, input_dim = embed_size, input_length = HYPO_LEN), 
+    if ci:
+        graph.add_input(name='class_input', batch_input_shape=(batch_size,3))
+        graph.add_node(class_model, name='class_model', input='class_input')
+        seq_inputs += 'class_model'
+
+    graph.add_node(seq2seq, name='seq2seq', inputs=seq_inputs, merge_mode='concat')
+    
+    if hs: 
+        graph.add_input(name='train_input', batch_input_shape=(batch_size, HYPO_LEN), dtype='int32')
+        graph.add_node(HierarchicalSoftmax(vocab_size, input_dim = embed_size, input_length = HYPO_LEN), 
                    name = 'softmax', inputs=['seq2seq','train_input'], 
                    merge_mode = 'join')
+    else:
+        graph.add_node(TimeDistributedDense(vocab_size), name='tdd', input='seq2seq')
+        graph.add_node(Activation('softmax'), name='softmax', input='tdd')
 
     graph.add_output(name='output', input='softmax')
-    
-    graph.compile(loss={'output':'categorical_crossentropy'}, optimizer='adam', sample_weight_modes={'output':'temporal'})
+    loss_fun = hs_categorical_crossentropy if hs else 'categorical_crossentropy'
+    graph.compile(loss={'output':loss_fun}, optimizer='adam', sample_weight_modes={'output':'temporal'})
     return graph
 
 def make_adverse_model(generative_model, embed_size = 50, batch_size = 64):
@@ -190,52 +199,35 @@ def train_model_generation(train, dev, glove, model, model_dir =  'models/curr_m
         writer = csv.writer(f)
         writer.writerows(stats)
         
-def train_model_embed(train, dev, glove, model, model_dir =  'models/curr_model', nb_epochs = 20, batch_size = 64, worse_steps = 5):
-    #validation_freq = 1000
+def train_model_embed(train, dev, glove, model, nb_epochs = 20, batch_size = 64, worse_steps = 5, hs=True, ci = True):
     X_dev_p, X_dev_h, y_dev = load_data.prepare_split_vec_dataset(dev, glove)
-    #test_losses = []
-    #stats = [['iter', 'train_loss', 'dev_loss']]
-    #exit_loop = False
     embed_size = X_dev_p[0].shape[1]
     glove_keys = glove.keys()
     glove_index = {glove_keys[i]:i for i in range(len(glove_keys))}
-    #if not os.path.exists(model_dir):
-    #     os.makedirs(model_dir)
 
     for e in range(nb_epochs):
         print "Epoch ", e
         mb = load_data.get_minibatches_idx(len(train), batch_size, shuffle=True)
-        #mb = load_data.get_minibatches_idx_bucketing_both(train,([9,11,13,16,22],[6,7,8,10,13]), batch_size, shuffle=True)
         p = Progbar(len(train))
         for i, train_index in mb:
             if len(train_index) != batch_size:
                 continue
             X_train_p,_ , y_train = load_data.prepare_split_vec_dataset([train[k] for k in train_index], glove)
-            X_train_h = load_data.prepare_one_hot_sents([train[k][1] for k in train_index], glove_index)
+            X_train_h = load_data.prepare_one_hot_sents([train[k][1] for k in train_index], glove_index, one_hot=False)
             padded_p = load_data.pad_sequences(X_train_p, maxlen = PREM_LEN, dim = embed_size, padding = 'pre')
-            padded_h = load_data.pad_sequences(X_train_h, maxlen = HYPO_LEN, dim = len(glove_index), padding = 'post')
+            padded_h = load_data.pad_sequences(X_train_h, maxlen = HYPO_LEN, dim = 1, padding = 'post')
             
-            data = {'premise_input': padded_p, 'embed_input': np.expand_dims(np.array(train_index), axis=1),'class_input' : y_train, 'output' : padded_h}
+            data = {'premise_input': padded_p, 'embed_input': np.expand_dims(np.array(train_index), axis=1), 'output' : padded_h}
+            if ci:
+               data['class_input'] = y_train
+            if hs:
+		data['train_input'] = padded_h.sum(axis=2)
+                data['output'] = np.ones((batch_size, HYPO_LEN, 1))
+            
             sw = (np.sum(padded_h, axis = 2) != 0).astype(float)
             train_loss = float(model.train_on_batch(data, sample_weight={'output':sw})[0])
             p.add(len(train_index),[('train_loss', train_loss)])
         sys.stdout.write('\n')
-        #dev_loss = validate_model_generation(model, X_dev_p, X_dev_h, glove, batch_size)
-        #sys.stdout.write('\n\n')
-        #test_losses.append(dev_loss)
-        #stats.append([iter,  p.sum_values['train_loss'][0] / p.sum_values['train_loss'][1], dev_loss])
-        #if (np.array(test_losses[-worse_steps:]) > min(test_losses)).all():
-        #    exit_loop = True
-        #    break
-        #else:
-        #    fn = model_dir + '/model' '~' + str(iter)
-        #    open(fn + '.json', 'w').write(model.to_json())
-        #    model.save_weights(fn + '.h5')
-        #if exit_loop:
-        #    break
-    #with open(model_dir + '/stats.csv', 'w') as f:
-    #    writer = csv.writer(f)
-    #    writer.writerows(stats)
 
 def validate_model_generation(model, X_dev_p, X_dev_h, glove, batch_size):
     glove_mat = np.array(glove.values())
@@ -272,6 +264,9 @@ def generation_predict_embed(model, glove, premise, embed_index, class_index,  b
     C = np.zeros((batch_size, 3))
     C[0][class_index] = 1
     data = {'premise_input': X, 'embed_input': E, 'class_input':C}
+    hs = True
+    if hs:
+        data['train_input'] = np.zeros((batch_size, HYPO_LEN))
     model_pred = model.predict_on_batch(data)
     return model_pred['output'][0]
 
@@ -370,3 +365,13 @@ def test_genmodel(gen_model, classify_model, train, dev, glove, glove_alter):
             print probs[0][0][2], gen_str
         print
     
+if __name__ == "__main__":
+    train, dev, test = load_data.load_all_snli_datasets('data/snli_1.0/')
+    glove = load_data.import_glove('data/snli_vectors.txt')
+    add_eol_to_hypo(train)
+    add_eol_to_hypo(dev)
+    class_input = 'entailment'
+    train = transform_dataset(train, class_input, PREM_LEN, HYPO_LEN)
+    dev = transform_dataset(dev, class_input, PREM_LEN, HYPO_LEN)
+    for ex in train+dev:
+        load_data.load_word_vecs(ex[0] + ex[1], glove)

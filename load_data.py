@@ -118,12 +118,17 @@ def load_word_vec(token, glove):
 	glove[token] = np.random.uniform(-0.05, 0.05, len(glove.values()[0]))    
     return glove[token]
 
-def prepare_one_hot_sents(dataset, glove_index):
+#change this functions name
+def prepare_one_hot_sents(dataset, glove_index, one_hot = True):
     H = []
     for s in dataset:
-        sent_vec = np.zeros((len(s), len(glove_index)))
+        
+        sent_vec = np.zeros((len(s), len(glove_index))) if one_hot else np.zeros((len(s), 1))
         for i in range(len(s)):
-            sent_vec[i][glove_index[s[i]]] = 1
+            if one_hot:
+                sent_vec[i][glove_index[s[i]]] = 1
+            else:
+                sent_vec[i][0] = glove_index[s[i]]
         H.append(sent_vec)
     return np.array(H)
     

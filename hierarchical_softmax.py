@@ -84,7 +84,7 @@ def hs_categorical_crossentropy(y_true, y_pred):
         return T.nnet.categorical_crossentropy(y_pred, y_true)
 
 def test_hierarchical_softmax(timesteps = 15, input_dim = 50, batch_size = 32,
-                              output_dim = 3218, batches = 30, epochs = 300):
+                              output_dim = 3218, batches = 300, epochs = 30):
     
     model = Graph()
     model.add_input(name='real_input', batch_input_shape=(batch_size, timesteps, input_dim))
