@@ -154,7 +154,7 @@ def train_model_embed(train, dev, glove, model, nb_epochs = 20, batch_size = 64,
         sys.stdout.write('\n')
 
 
-def generation_predict_embed(model, glove, premise, embed_index, class_index,  batch_size = 64, hs = True, ci = True):
+def generation_predict_embed(model, glove, premise, embed_index,  batch_size = 64, hs = True, ci = True, class_index = -1):
     X_p = load_data.load_word_vecs(premise, glove)
     X_p = load_data.pad_sequences([X_p], maxlen=PREM_LEN, dim = len(X_p[0]))
     X = np.zeros((batch_size, X_p.shape[1], X_p.shape[2]))
