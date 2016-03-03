@@ -24,8 +24,12 @@ from keras.utils.generic_utils import Progbar
 PREM_LEN = 22
 HYPO_LEN = 12
 
-         
-def make_embed_model(examples ,vocab_size, hidden_size = 10, embed_size = 50, batch_size = 64, hs = True, ci = True):
+def make_fixed_embeddings(glove, seq_len):
+    glove_mat = np.array(glove.values())
+    return Embedding(input_dim = glove_mat.shape[0], output_dim = glove_mat.shape[1], 
+                       weights = [glove_mat], trainable = False, input_length  = seq_len)
+            
+def make_embed_model(examples, glove, hidden_size = 10, embed_size = 50, batch_size = 64, hs = True, ci = True):
     
     batch_input_shape = (batch_size, PREM_LEN, embed_size)
     
@@ -52,26 +56,28 @@ def make_embed_model(examples ,vocab_size, hidden_size = 10, embed_size = 50, ba
     class_model.add(RepeatVector(PREM_LEN))
     
     graph = Graph()
-    graph.add_input(name='premise_input', batch_input_shape=batch_input_shape)
+    graph.add_input(name='premise_input', batch_input_shape=(batch_size, PREM_LEN), dtype = 'int')
+    graph.add_node(make_fixed_embeddings(glove, PREM_LEN), name = 'word_vec', input='premise_input')
+    
     graph.add_input(name='embed_input', batch_input_shape=(batch_size,1), dtype='int')
     graph.add_node(em_model, name='em_model', input='embed_input')
     
-    seq_inputs = ['premise_input', 'em_model']
+    seq_inputs = ['word_vec', 'em_model']
     
     if ci:
         graph.add_input(name='class_input', batch_input_shape=(batch_size,3))
         graph.add_node(class_model, name='class_model', input='class_input')
-        seq_inputs += 'class_model'
-
+        seq_inputs += ['class_model']
+   
     graph.add_node(seq2seq, name='seq2seq', inputs=seq_inputs, merge_mode='concat')
     
     if hs: 
         graph.add_input(name='train_input', batch_input_shape=(batch_size, HYPO_LEN), dtype='int32')
-        graph.add_node(HierarchicalSoftmax(vocab_size, input_dim = embed_size, input_length = HYPO_LEN), 
+        graph.add_node(HierarchicalSoftmax(len(glove), input_dim = embed_size, input_length = HYPO_LEN), 
                    name = 'softmax', inputs=['seq2seq','train_input'], 
                    merge_mode = 'join')
     else:
-        graph.add_node(TimeDistributedDense(vocab_size), name='tdd', input='seq2seq')
+        graph.add_node(TimeDistributedDense(len(glove)), name='tdd', input='seq2seq')
         graph.add_node(Activation('softmax'), name='softmax', input='tdd')
 
     graph.add_output(name='output', input='softmax')
@@ -126,8 +132,8 @@ def generation_embded_test(train, glove, model, batch_size = 64):
 def train_model_embed(train, dev, glove, model, nb_epochs = 20, batch_size = 64, worse_steps = 5, hs=True, ci = True):
     X_dev_p, X_dev_h, y_dev = load_data.prepare_split_vec_dataset(dev, glove)
     embed_size = X_dev_p[0].shape[1]
-    glove_keys = glove.keys()
-    glove_index = {glove_keys[i]:i for i in range(len(glove_keys))}
+    
+    word_index = load_data.WordIndex(glove)
 
     for e in range(nb_epochs):
         print "Epoch ", e
@@ -136,8 +142,8 @@ def train_model_embed(train, dev, glove, model, nb_epochs = 20, batch_size = 64,
         for i, train_index in mb:
             if len(train_index) != batch_size:
                 continue
-            X_train_p,_ , y_train = load_data.prepare_split_vec_dataset([train[k] for k in train_index], glove)
-            X_train_h = load_data.prepare_one_hot_sents([train[k][1] for k in train_index], glove_index, one_hot=False)
+            X_train_p, X_train_h , y_train = load_data.prepare_split_vec_dataset([train[k] for k in train_index], word_index.index)
+
             padded_p = load_data.pad_sequences(X_train_p, maxlen = PREM_LEN, dim = embed_size, padding = 'pre')
             padded_h = load_data.pad_sequences(X_train_h, maxlen = HYPO_LEN, dim = 1, padding = 'post')
             
@@ -258,8 +264,8 @@ def test_genmodel(gen_model, train, dev, glove, classify_model = None, glove_alt
 if __name__ == "__main__":
     train, dev, test = load_data.load_all_snli_datasets('data/snli_1.0/')
     glove = load_data.import_glove('data/snli_vectors.txt')
-    add_eol_to_hypo(train)
-    add_eol_to_hypo(dev)
+    #add_eol_to_hypo(train)
+    #add_eol_to_hypo(dev)
     class_input = 'entailment'
     train = transform_dataset(train, class_input, PREM_LEN, HYPO_LEN)
     dev = transform_dataset(dev, class_input, PREM_LEN, HYPO_LEN)

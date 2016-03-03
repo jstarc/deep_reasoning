@@ -98,25 +98,38 @@ def prepare_vec_dataset(dataset, glove):
     one_hot_y[np.arange(len(y)), y] = 1
     return np.array(X), one_hot_y
     
-def prepare_split_vec_dataset(dataset, glove, wordvecs = True):
+def prepare_split_vec_dataset(dataset, word_index= None, glove = None):
     P = []
     H = []
     y = []
     for example in dataset:
         if example[2] == '-':
             continue
-      
-        P.append(load_word_vecs(example[0], glove))
-        H.append(load_word_vecs(example[1], glove))
+        if glove:
+            P.append(load_word_vecs(example[0], glove))
+            H.append(load_word_vecs(example[1], glove))
+        else:
+            P.append(load_word_indices(example[0], word_index))
+            H.append(load_word_indices(example[1], word_index))
         y.append(LABEL_LIST.index(example[2]))
     one_hot_y = np.zeros((len(y), len(LABEL_LIST)))
     one_hot_y[np.arange(len(y)), y] = 1
     return np.array(P), np.array(H), one_hot_y
     
+class WordIndex:
+    def __init__(self, word_vec, eos_symbol = 'EOS'):
+        self.keys =  word_vec.keys() if eos_symbol is None else [eos_symbol] + word_vec.keys()
+        self.index = {key:value for key,value in zip(self.keys, range(len(self.keys)))}
+
+
 def load_word_vec(token, glove):
     if token not in glove:
-	glove[token] = np.random.uniform(-0.05, 0.05, len(glove.values()[0]))    
+	glove[token] = np.random.uniform(-1, 1, len(glove.values()[0]))    
     return glove[token]
+
+
+def convert_to_one_hot(indices, vocab_size):
+    return np.equal.outer(indices,np.arange(vocab_size)).astype(np.float)
 
 #change this functions name
 def prepare_one_hot_sents(dataset, glove_index, one_hot = True):
@@ -134,7 +147,10 @@ def prepare_one_hot_sents(dataset, glove_index, one_hot = True):
     
     
 def load_word_vecs(token_list, glove):
-    return np.array([load_word_vec(x, glove) for x in token_list])        
+    return np.array([load_word_vec(x, glove) for x in token_list])   
+
+def load_word_indices(token_list, word_index):
+    return np.array([word_index[x] for x in token_list])     
         
 def pad_sequences(sequences, maxlen=None, dim=1, dtype='float32',
     padding='pre', truncating='pre', value=0.):
