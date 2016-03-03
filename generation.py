@@ -85,9 +85,10 @@ def make_embed_model(examples, glove, hidden_size = 10, embed_size = 50, batch_s
     graph.compile(loss={'output':loss_fun}, optimizer='adam', sample_weight_modes={'output':'temporal'})
     return graph
 
-def make_adverse_model(generative_model, embed_size = 50, batch_size = 64):
+def make_adverse_model(generative_model, glove, embed_size = 50, batch_size = 64):
     discriminator = Sequential()
-    discriminator.add(LSTM(embed_size, batch_input_shape=(batch_size, HYPO_LEN, embed_size)))
+    discriminator.add(make_fixed_embeddings(glove, HYPO_LEN))
+    discriminator.add(LSTM(embed_size))
     discriminator.add(Dense(1, activation='sigmoid'))    
     batch_input_shape = (batch_size,PREM_LEN, embed_size)
     
@@ -95,7 +96,7 @@ def make_adverse_model(generative_model, embed_size = 50, batch_size = 64):
     #graph.add_input(name='premise_input', batch_input_shape=batch_input_shape)
     #graph.add_input(name='embed_input', batch_input_shape=(batch_size,1), dtype='int')
     graph.add_node(generative_model, name = 'generative')#, inputs=['premise_input', 'embed_input'])
-    graph.add_input(name='training_hypo', batch_input_shape=(batch_size, HYPO_LEN, embed_size))
+    graph.add_input(name='training_hypo', batch_input_shape=(batch_size, HYPO_LEN), dtype = 'int')
     graph.add_shared_node(discriminator, name='shared', inputs=['training_hypo', 'generative'], merge_mode='join')
     
     def margin_opt(inputs):
@@ -106,10 +107,62 @@ def make_adverse_model(generative_model, embed_size = 50, batch_size = 64):
         return K.sqrt(K.sum(K.square(u - v), axis=1, keepdims=True))
     graph.add_node(Lambda(margin_opt), name = 'output2', input='shared', create_output = True)
     graph.cache_enabled = False
-    graph.compile(loss={'output2':'mse'}, optimizer='sgd')
+    graph.compile(loss={'output2':'mse'}, optimizer='adam')
     return graph
-        
-        
+
+def make_basic_adverse(glove, embed_size = 50, compile=False):
+    discriminator = Sequential()
+    discriminator.add(make_fixed_embeddings(glove, HYPO_LEN))
+    discriminator.add(LSTM(embed_size))
+    discriminator.add(Dense(1, activation='sigmoid'))
+    if compile:
+        discriminator.compile(loss='binary_crossentropy', optimizer='adam')
+    return discriminator
+
+def make_adverse_model2(glove, embed_size = 50, batch_size = 64):
+    discriminator = make_basic_adverse(glove, embed_size)
+    
+    graph = Graph()
+    graph.add_input(name='train_hypo', batch_input_shape=(batch_size, HYPO_LEN), dtype ='int')
+    graph.add_input(name='gen_hypo', batch_input_shape=(batch_size, HYPO_LEN), dtype ='int')
+    graph.add_shared_node(discriminator, name='shared', inputs=['train_hypo', 'gen_hypo'], merge_mode='join')
+    
+    def margin_opt(inputs):
+        print(inputs)
+        assert len(inputs) == 2, ('Margin Output needs '
+                              '2 inputs, %d given' % len(inputs))
+        u, v = inputs.values()
+        return K.sqrt(K.sum(K.square(u - v), axis=1, keepdims=True))
+    graph.add_node(Lambda(margin_opt), name = 'output2', input='shared', create_output = True)
+    graph.compile(loss={'output2':'mse'}, optimizer='adam')
+    return graph
+
+    
+
+def adverse_model_train(train, ad_model, gen_model, word_index, glove, nb_epochs = 20, batch_size=64):
+    
+    for e in range(nb_epochs):
+        print "Epoch ", e
+        mb = load_data.get_minibatches_idx(len(train), batch_size, shuffle=True)
+        p = Progbar(len(train))
+        for i, train_index in mb:
+            if len(train_index) != batch_size:
+                continue
+              
+            probs = generation_predict_embed(gen_model, word_index.index, 
+                     [train[k] for k in train_index], 
+                     np.random.random_integers(0, len(train), batch_size))
+            gen_batch = get_classes(probs)
+
+            _, X_hypo, _ = load_data.prepare_split_vec_dataset([train[k] for k in train_index], word_index.index)
+            train_batch = load_data.pad_sequences(X_hypo, maxlen = HYPO_LEN, dim = -1, padding = 'post')
+
+            X = np.concatenate([gen_batch, train_batch])
+            y = np.concatenate([np.zeros(len(gen_batch)), np.ones(len(train_batch))])
+            loss = ad_model.train_on_batch(X, y)[0]
+            p.add(len(X),[('train_loss', loss)])
+             
+             
 def generation_test(train, glove, model, batch_size = 64):
     mb = load_data.get_minibatches_idx(len(train), batch_size, shuffle=True)
     p = Progbar(len(train))
@@ -130,8 +183,8 @@ def generation_embded_test(train, glove, model, batch_size = 64):
         #p.add(len(X_p),[('train_loss', train_loss)])
     
 def train_model_embed(train, dev, glove, model, nb_epochs = 20, batch_size = 64, worse_steps = 5, hs=True, ci = True):
-    X_dev_p, X_dev_h, y_dev = load_data.prepare_split_vec_dataset(dev, glove)
-    embed_size = X_dev_p[0].shape[1]
+    X_dev_p, X_dev_h, y_dev = load_data.prepare_split_vec_dataset(dev, glove=glove)
+    
     
     word_index = load_data.WordIndex(glove)
 
@@ -143,32 +196,27 @@ def train_model_embed(train, dev, glove, model, nb_epochs = 20, batch_size = 64,
             if len(train_index) != batch_size:
                 continue
             X_train_p, X_train_h , y_train = load_data.prepare_split_vec_dataset([train[k] for k in train_index], word_index.index)
-
-            padded_p = load_data.pad_sequences(X_train_p, maxlen = PREM_LEN, dim = embed_size, padding = 'pre')
-            padded_h = load_data.pad_sequences(X_train_h, maxlen = HYPO_LEN, dim = 1, padding = 'post')
+            padded_p = load_data.pad_sequences(X_train_p, maxlen = PREM_LEN, dim = -1, padding = 'pre')
+            padded_h = load_data.pad_sequences(X_train_h, maxlen = HYPO_LEN, dim = -1, padding = 'post')
             
             data = {'premise_input': padded_p, 'embed_input': np.expand_dims(np.array(train_index), axis=1), 'output' : padded_h}
             if ci:
                data['class_input'] = y_train
             if hs:
-		data['train_input'] = padded_h.sum(axis=2)
+		data['train_input'] = padded_h
                 data['output'] = np.ones((batch_size, HYPO_LEN, 1))
             
-            sw = (np.sum(padded_h, axis = 2) != 0).astype(float)
+            sw = (padded_h != 0).astype(float)
             train_loss = float(model.train_on_batch(data, sample_weight={'output':sw})[0])
             p.add(len(train_index),[('train_loss', train_loss)])
         sys.stdout.write('\n')
 
 
-def generation_predict_embed(model, glove, premise, embed_index,  batch_size = 64, hs = True, ci = True, class_index = -1):
-    X_p = load_data.load_word_vecs(premise, glove)
-    X_p = load_data.pad_sequences([X_p], maxlen=PREM_LEN, dim = len(X_p[0]))
-    X = np.zeros((batch_size, X_p.shape[1], X_p.shape[2]))
-    X[0] = X_p[0]
-    E = np.zeros((batch_size, 1))
-    E[0][0] = embed_index
+def generation_predict_embed(model, word_index, batch, embed_indices, batch_size = 64, hs = True, ci = True, class_index = -1):
+    prem, hypo, y = load_data.prepare_split_vec_dataset(batch, word_index)
+    X_p = load_data.pad_sequences(prem, maxlen=PREM_LEN, dim = -1)
     
-    data = {'premise_input': X, 'embed_input': E}
+    data = {'premise_input': X_p, 'embed_input': embed_indices[:,None]}
     
     if ci:
       C = np.zeros((batch_size, 3))
@@ -179,13 +227,17 @@ def generation_predict_embed(model, glove, premise, embed_index,  batch_size = 6
         data['train_input'] = np.zeros((batch_size, HYPO_LEN))
     
     model_pred = model.predict_on_batch(data)
-    return model_pred['output'][0]
+    return model_pred['output']
 
-def project(embed_sent, glove):
+def get_classes(preds):
+   return np.argmax(preds, axis = 2)
+
+
+def project(embed_sent, word_index):
     result = []
     ind = np.argmax(embed_sent, axis = 1)
     for i in ind:
-        result.append(glove.keys()[i])
+        result.append(word_index.keys[i])
     return result
 
 def rank_sent(premise, hypothesis, model, glove, glove_mat):
@@ -232,7 +284,7 @@ def word_overlap(premise, hypo):
     return len([h for h in hypo if h in premise]) / float(len(hypo))    
            
 
-def hypo_to_string(hypo, eos = '.'):
+def hypo_to_string(hypo, eos = 'EOS'):
     if eos in hypo:
         ind = hypo.index(eos)
         return " ".join(hypo[:ind + 1])
@@ -240,7 +292,7 @@ def hypo_to_string(hypo, eos = '.'):
         return " ".join(hypo)
  
 
-def test_genmodel(gen_model, train, dev, glove, classify_model = None, glove_alter = None):
+def test_genmodel(gen_model, train, dev, word_index, classify_model = None, glove_alter = None):
     dev_count = 10
     gens_count = 10
    
@@ -249,9 +301,9 @@ def test_genmodel(gen_model, train, dev, glove, classify_model = None, glove_alt
         print " ".join(ex[1])
         print "Generations: "
         for train_index in np.random.random_integers(0, len(train), gens_count):
-            pred = generation_predict_embed(gen_model, glove, ex[0], train_index)
+            pred = generation_predict_embed(gen_model, word_index, ex[0], train_index)
             
-            gen_lex = project(pred, glove)
+            gen_lex = project(pred, word_index)
             gen_str = hypo_to_string(gen_lex)
             
             if classify_model != None and glove_alter != None: 
@@ -271,3 +323,4 @@ if __name__ == "__main__":
     dev = transform_dataset(dev, class_input, PREM_LEN, HYPO_LEN)
     for ex in train+dev:
         load_data.load_word_vecs(ex[0] + ex[1], glove)
+    load_data.load_word_vec('EOS', glove)

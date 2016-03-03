@@ -105,20 +105,23 @@ def prepare_split_vec_dataset(dataset, word_index= None, glove = None):
     for example in dataset:
         if example[2] == '-':
             continue
-        if glove:
+        if glove is not None:
             P.append(load_word_vecs(example[0], glove))
             H.append(load_word_vecs(example[1], glove))
         else:
-            P.append(load_word_indices(example[0], word_index))
+            P.append(load_word_indices(example[0], word_index))   
             H.append(load_word_indices(example[1], word_index))
         y.append(LABEL_LIST.index(example[2]))
+    
     one_hot_y = np.zeros((len(y), len(LABEL_LIST)))
     one_hot_y[np.arange(len(y)), y] = 1
     return np.array(P), np.array(H), one_hot_y
     
 class WordIndex:
     def __init__(self, word_vec, eos_symbol = 'EOS'):
-        self.keys =  word_vec.keys() if eos_symbol is None else [eos_symbol] + word_vec.keys()
+        self.keys =  word_vec.keys()
+        index = self.keys.index(eos_symbol)
+        self.keys[index], self.keys[0] = self.keys[0], eos_symbol 
         self.index = {key:value for key,value in zip(self.keys, range(len(self.keys)))}
 
 
@@ -165,7 +168,8 @@ def pad_sequences(sequences, maxlen=None, dim=1, dtype='float32',
     if maxlen is None:
         maxlen = np.max(lengths)
 
-    x = (np.ones((nb_samples, maxlen, dim)) * value).astype(dtype)
+    dims = (nb_samples, maxlen) if dim < 0 else (nb_samples, maxlen, dim)
+    x = (np.ones(dims) * value).astype(dtype)
     for idx, s in enumerate(sequences):
         if truncating == 'pre':
             trunc = s[-maxlen:]
