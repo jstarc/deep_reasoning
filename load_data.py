@@ -117,13 +117,18 @@ def prepare_split_vec_dataset(dataset, word_index= None, glove = None):
     one_hot_y[np.arange(len(y)), y] = 1
     return np.array(P), np.array(H), one_hot_y
     
-class WordIndex:
+class WordIndex(object):
     def __init__(self, word_vec, eos_symbol = 'EOS'):
         self.keys =  word_vec.keys()
         index = self.keys.index(eos_symbol)
         self.keys[index], self.keys[0] = self.keys[0], eos_symbol 
+        self.keys = np.array(self.keys)
         self.index = {key:value for key,value in zip(self.keys, range(len(self.keys)))}
-
+    
+    def print_seq(self, sequence):
+        words = self.keys[sequence]
+        return " ".join(words)
+        
 
 def load_word_vec(token, glove):
     if token not in glove:

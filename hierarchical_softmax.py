@@ -17,7 +17,7 @@ import theano.tensor as T
 import numpy as np
 from keras.utils.generic_utils import Progbar
 from numpy.linalg import norm
-
+from keras.backend.common import _EPSILON 	
 
 class HierarchicalSoftmax(Layer): 
 
@@ -81,7 +81,8 @@ class HierarchicalSoftmax(Layer):
         return dict(list(base_config.items()) + list(config.items()))
         
 def hs_categorical_crossentropy(y_true, y_pred):
-        return T.nnet.categorical_crossentropy(y_pred, y_true)
+    y_pred = T.clip(y_pred, _EPSILON, 1.0 - _EPSILON)    
+    return T.nnet.categorical_crossentropy(y_pred, y_true)
 
 def test_hierarchical_softmax(timesteps = 15, input_dim = 50, batch_size = 32,
                               output_dim = 3218, batches = 300, epochs = 30):

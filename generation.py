@@ -144,23 +144,37 @@ def adverse_model_train(train, ad_model, gen_model, word_index, glove, nb_epochs
     for e in range(nb_epochs):
         print "Epoch ", e
         mb = load_data.get_minibatches_idx(len(train), batch_size, shuffle=True)
-        p = Progbar(len(train))
+        p = Progbar(2 * len(train))
         for i, train_index in mb:
             if len(train_index) != batch_size:
                 continue
-              
-            probs = generation_predict_embed(gen_model, word_index.index, 
-                     [train[k] for k in train_index], 
-                     np.random.random_integers(0, len(train), batch_size))
-            gen_batch = get_classes(probs)
-
-            _, X_hypo, _ = load_data.prepare_split_vec_dataset([train[k] for k in train_index], word_index.index)
-            train_batch = load_data.pad_sequences(X_hypo, maxlen = HYPO_LEN, dim = -1, padding = 'post')
-
-            X = np.concatenate([gen_batch, train_batch])
-            y = np.concatenate([np.zeros(len(gen_batch)), np.ones(len(train_batch))])
+            X, y = adverse_batch([train[k] for k in train_index], word_index, gen_model, len(train))              
             loss = ad_model.train_on_batch(X, y)[0]
             p.add(len(X),[('train_loss', loss)])
+
+def test_adverse(dev, ad_model, gen_model, word_index, glove, train_len, batch_size=64):
+    mb = load_data.get_minibatches_idx(len(dev), batch_size, shuffle=True)
+    p = Progbar(len(dev) * 2)
+    for i, train_index in mb:
+        if len(train_index) != batch_size:
+            continue
+        X, y = adverse_batch([dev[k] for k in train_index], word_index, gen_model, train_len)
+        pred = ad_model.predict_on_batch(X)
+        print pred, y
+         
+        #p.add(len(X),[('test_loss', loss)])
+
+def adverse_batch(orig_batch, word_index, gen_model, train_len):
+    probs = generation_predict_embed(gen_model, word_index.index, orig_batch,
+                     np.random.random_integers(0, train_len, len(orig_batch)))
+    gen_batch = get_classes(probs)
+
+    _, X_hypo, _ = load_data.prepare_split_vec_dataset(orig_batch, word_index.index)
+    train_batch = load_data.pad_sequences(X_hypo, maxlen = HYPO_LEN, dim = -1, padding = 'post')
+
+    X = np.concatenate([gen_batch, train_batch])
+    y = np.concatenate([np.zeros(len(gen_batch)), np.ones(len(train_batch))])
+    return X,y
              
              
 def generation_test(train, glove, model, batch_size = 64):
@@ -292,19 +306,23 @@ def hypo_to_string(hypo, eos = 'EOS'):
         return " ".join(hypo)
  
 
-def test_genmodel(gen_model, train, dev, word_index, classify_model = None, glove_alter = None):
-    dev_count = 10
-    gens_count = 10
+def test_genmodel(gen_model, train, dev, word_index, classify_model = None, glove_alter = None, batch_size = 64):
    
-    for ex in dev[:dev_count]:
-        print " ".join(ex[0])
-        print " ".join(ex[1])
+    gens_count = 6
+    dev_counts = 6
+    gens = []
+    for i in range(gens_count):
+        creatives = np.random.random_integers(0, len(train), batch_size)
+        preds = generation_predict_embed(gen_model, word_index.index, dev[:batch_size], creatives)
+        gens.append(get_classes(preds))
+        
+    for j in range(dev_counts):
+        print " ".join(dev[j][0])
+        print " ".join(dev[j][1])
         print "Generations: "
-        for train_index in np.random.random_integers(0, len(train), gens_count):
-            pred = generation_predict_embed(gen_model, word_index, ex[0], train_index)
-            
-            gen_lex = project(pred, word_index)
-            gen_str = hypo_to_string(gen_lex)
+        for i in range(gens_count):
+            gen_lex = gens[i][j]
+            gen_str = word_index.print_seq(gen_lex)
             
             if classify_model != None and glove_alter != None: 
                 probs = misc.predict_example(" ".join(ex[0]), gen_str, classify_model, glove_alter)
