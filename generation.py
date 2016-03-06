@@ -21,6 +21,8 @@ import misc
 from hierarchical_softmax import HierarchicalSoftmax
 from hierarchical_softmax import hs_categorical_crossentropy
 from keras.utils.generic_utils import Progbar
+from keras.models import model_from_json
+
 PREM_LEN = 22
 HYPO_LEN = 12
 
@@ -330,7 +332,10 @@ def test_genmodel(gen_model, train, dev, word_index, classify_model = None, glov
             else:
                 print gen_str
         print
-    
+
+
+def load_model(json):
+    return model_from_json(json)    
 if __name__ == "__main__":
     train, dev, test = load_data.load_all_snli_datasets('data/snli_1.0/')
     glove = load_data.import_glove('data/snli_vectors.txt')

@@ -76,7 +76,8 @@ class HierarchicalSoftmax(Layer):
         config = {'name': self.__class__.__name__,
                   'output_dim': self.output_dim,
                   'init': self.init.__name__,
-                  'input_dim': self.input_dim}
+                  'input_dim': self.input_dim,
+                  'input_length' : self.input_length}
         base_config = super(HierarchicalSoftmax, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))
         
