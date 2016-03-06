@@ -127,6 +127,7 @@ class WordIndex(object):
     
     def print_seq(self, sequence):
         words = self.keys[sequence]
+        words = [w for w in words if w != 'EOS']
         return " ".join(words)
         
 

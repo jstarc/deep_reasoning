@@ -155,16 +155,35 @@ def adverse_model_train(train, ad_model, gen_model, word_index, glove, nb_epochs
             p.add(len(X),[('train_loss', loss)])
 
 def test_adverse(dev, ad_model, gen_model, word_index, glove, train_len, batch_size=64):
-    mb = load_data.get_minibatches_idx(len(dev), batch_size, shuffle=True)
+    mb = load_data.get_minibatches_idx(len(dev), batch_size, shuffle=False)
     p = Progbar(len(dev) * 2)
     for i, train_index in mb:
         if len(train_index) != batch_size:
             continue
         X, y = adverse_batch([dev[k] for k in train_index], word_index, gen_model, train_len)
-        pred = ad_model.predict_on_batch(X)
-        print pred, y
-         
-        #p.add(len(X),[('test_loss', loss)])
+        pred = ad_model.predict_on_batch(X)[0].flatten()
+        acc = sum(np.abs(y - pred) < 0.5) / float(len(y))
+        p.add(len(X),[('test_acc', acc)])
+
+def adverse_generate(gen_model, ad_model, train, word_index, threshold = 0.95, batch_size = 64):
+    mb = load_data.get_minibatches_idx(len(train), batch_size, shuffle=True)
+    p = Progbar(len(train))
+    results = []
+    for i, train_index in mb:
+        if len(train_index) != batch_size:
+            continue    
+        orig_batch = [train[k] for k in train_index]
+        probs = generation_predict_embed(gen_model, word_index.index, orig_batch,
+                     np.random.random_integers(0, len(train), len(orig_batch)))
+        gen_batch = get_classes(probs)
+        preds = ad_model.predict_on_batch(gen_batch)[0].flatten()
+        zipped = zip(preds, [word_index.print_seq(gen) for gen in gen_batch])
+        results += [el for el in zipped if el[0] > threshold]
+        if len(results) > 64:
+            print (i + 1) * batch_size 
+            return results
+
+             
 
 def adverse_batch(orig_batch, word_index, gen_model, train_len):
     probs = generation_predict_embed(gen_model, word_index.index, orig_batch,
@@ -198,12 +217,13 @@ def generation_embded_test(train, glove, model, batch_size = 64):
     return model.train_on_batch(data)
         #p.add(len(X_p),[('train_loss', train_loss)])
     
-def train_model_embed(train, dev, glove, model, nb_epochs = 20, batch_size = 64, worse_steps = 5, hs=True, ci = True):
+def train_model_embed(train, dev, glove, model, model_dir = 'models/curr_model', nb_epochs = 20, batch_size = 64, worse_steps = 5, hs=True, ci = True):
     X_dev_p, X_dev_h, y_dev = load_data.prepare_split_vec_dataset(dev, glove=glove)
     
     
     word_index = load_data.WordIndex(glove)
-
+    if not os.path.exists(model_dir):
+         os.makedirs(model_dir)
     for e in range(nb_epochs):
         print "Epoch ", e
         mb = load_data.get_minibatches_idx(len(train), batch_size, shuffle=True)
@@ -222,10 +242,12 @@ def train_model_embed(train, dev, glove, model, nb_epochs = 20, batch_size = 64,
 		data['train_input'] = padded_h
                 data['output'] = np.ones((batch_size, HYPO_LEN, 1))
             
-            sw = (padded_h != 0).astype(float)
-            train_loss = float(model.train_on_batch(data, sample_weight={'output':sw})[0])
+            #sw = (padded_h != 0).astype(float)
+            #train_loss = float(model.train_on_batch(data, sample_weight={'output':sw})[0])
+	    train_loss = float(model.train_on_batch(data)[0])
             p.add(len(train_index),[('train_loss', train_loss)])
         sys.stdout.write('\n')
+        model.save_weights(model_dir + '/model~' + str(e))
 
 
 def generation_predict_embed(model, word_index, batch, embed_indices, batch_size = 64, hs = True, ci = True, class_index = -1):
@@ -341,7 +363,7 @@ if __name__ == "__main__":
     glove = load_data.import_glove('data/snli_vectors.txt')
     #add_eol_to_hypo(train)
     #add_eol_to_hypo(dev)
-    class_input = 'entailment'
+    class_input = None
     train = transform_dataset(train, class_input, PREM_LEN, HYPO_LEN)
     dev = transform_dataset(dev, class_input, PREM_LEN, HYPO_LEN)
     for ex in train+dev:
