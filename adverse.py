@@ -52,8 +52,8 @@ def make_basic_adverse(glove, embed_size = 50, compile=False, hypo_len = 12):
         discriminator.compile(loss='binary_crossentropy', optimizer='adam')
     return discriminator
 
-def make_adverse_model2(glove, embed_size = 50, batch_size = 64, hypo_len = 12):
-    discriminator = make_basic_adverse(glove, embed_size)
+def make_adverse_model2(discriminator, glove, embed_size = 100, batch_size = 64, hypo_len = 12):
+    #discriminator = make_basic_adverse(glove, embed_size)
     
     graph = Graph()
     graph.add_input(name='train_hypo', batch_input_shape=(batch_size, hypo_len), dtype ='int')
@@ -65,10 +65,12 @@ def make_adverse_model2(glove, embed_size = 50, batch_size = 64, hypo_len = 12):
         assert len(inputs) == 2, ('Margin Output needs '
                               '2 inputs, %d given' % len(inputs))
         u, v = inputs.values()
-        return K.sqrt(K.sum(K.square(u - v), axis=1, keepdims=True))
+        return K.log(u) + K.log(1-v)
+    
     graph.add_node(Lambda(margin_opt), name = 'output2', input='shared', create_output = True)
     graph.compile(loss={'output2':'mse'}, optimizer='adam')
     return graph
+    
 
     
 
@@ -86,27 +88,47 @@ def adverse_model_train(train, ad_model, gen_model, word_index, glove, nb_epochs
             loss = ad_model.train_on_batch(X, y)[0]
             p.add(len(X),[('train_loss', loss)])
 
-def test_adverse(dev, ad_model, gen_model, word_index, glove, train_len, batch_size=64):
+def adverse_model2_train(train, ad_model, gen_model, word_index, glove, nb_epochs = 20, batch_size=64, ci=False):
+
+    for e in range(nb_epochs):
+        print "Epoch ", e
+        mb = load_data.get_minibatches_idx(len(train), batch_size, shuffle=True)
+        p = Progbar(len(train))
+        for i, train_index in mb:
+            if len(train_index) != batch_size:
+                continue
+            class_indices = [i % 3] * batch_size if ci else None
+            train_b, gen_b, y = adverse_batch([train[k] for k in train_index], word_index, gen_model, len(train), class_indices = class_indices, separate = False)
+            data = {'train_hypo' : train_b, 'gen_hypo': gen_b, 'output2': y}
+            loss = ad_model.train_on_batch(data)[0]
+            p.add(len(train_b),[('train_loss', loss)])
+
+def extract_discriminator(model):
+    return K.function([model.inputs['gen_hypo'].input], [model.nodes['shared'].layer.layers[2].get_output(train=False)])
+
+def test_adverse(dev, ad_model, gen_model, word_index, glove, train_len, batch_size=64, ci = False):
     mb = load_data.get_minibatches_idx(len(dev), batch_size, shuffle=False)
     p = Progbar(len(dev) * 2)
     for i, train_index in mb:
         if len(train_index) != batch_size:
             continue
-        X, y = adverse_batch([dev[k] for k in train_index], word_index, gen_model, train_len)
+        class_indices = [i % 3] * batch_size if ci else None         
+        X, y = adverse_batch([dev[k] for k in train_index], word_index, gen_model, train_len, class_indices = class_indices)
         pred = ad_model.predict_on_batch(X)[0].flatten()
-        loss = binary_crossentropy(y, pred).eval()[0]
+        loss = binary_crossentropy(y.flatten(), pred).eval()
         acc = sum(np.abs(y - pred) < 0.5) / float(len(y))
         p.add(len(X),[('test_loss', loss), ('test_acc', acc)])
 
-def adverse_generate(gen_model, ad_model, train, word_index, threshold = 0.95, batch_size = 64):
+def adverse_generate(gen_model, ad_model, train, word_index, threshold = 0.95, batch_size = 64, ci = False):
     mb = load_data.get_minibatches_idx(len(train), batch_size, shuffle=True)
     results = []
     for i, train_index in mb:
         if len(train_index) != batch_size:
             continue    
         orig_batch = [train[k] for k in train_index]
+        class_indices = [i % 3] * batch_size if ci else None
         probs = generation.generation_predict_embed(gen_model, word_index.index, orig_batch,
-                     np.random.random_integers(0, len(train), len(orig_batch)))
+                     np.random.random_integers(0, len(train), len(orig_batch)), class_indices = class_indices)
         gen_batch = generation.get_classes(probs)
         preds = ad_model.predict_on_batch(gen_batch)[0].flatten()
         zipped = zip(preds, [word_index.print_seq(gen) for gen in gen_batch])
@@ -115,7 +137,7 @@ def adverse_generate(gen_model, ad_model, train, word_index, threshold = 0.95, b
             print (i + 1) * batch_size 
             return results
             
-def adverse_batch(orig_batch, word_index, gen_model, train_len, class_indices = None, hypo_len = 12):
+def adverse_batch(orig_batch, word_index, gen_model, train_len, class_indices = None, hypo_len = 12, separate = True):
     probs = generation.generation_predict_embed(gen_model, word_index.index, orig_batch,
                      np.random.random_integers(0, train_len, len(orig_batch)), class_indices=class_indices)
     gen_batch = generation.get_classes(probs)
@@ -123,8 +145,12 @@ def adverse_batch(orig_batch, word_index, gen_model, train_len, class_indices = 
     _, X_hypo, _ = load_data.prepare_split_vec_dataset(orig_batch, word_index.index)
     train_batch = load_data.pad_sequences(X_hypo, maxlen = hypo_len, dim = -1, padding = 'post')
 
-    X = np.concatenate([gen_batch, train_batch])
-    y = np.concatenate([np.zeros(len(gen_batch)), np.ones(len(train_batch))])
-    return X,y
+    if separate:
+        X = np.concatenate([gen_batch, train_batch])
+        y = np.concatenate([np.zeros(len(gen_batch)), np.ones(len(train_batch))])
+        return X,y
+    else:
+        return train_batch, gen_batch, np.zeros(len(gen_batch))
+
     
 
