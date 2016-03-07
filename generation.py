@@ -141,7 +141,7 @@ def make_adverse_model2(glove, embed_size = 50, batch_size = 64):
 
     
 
-def adverse_model_train(train, ad_model, gen_model, word_index, glove, nb_epochs = 20, batch_size=64):
+def adverse_model_train(train, ad_model, gen_model, word_index, glove, nb_epochs = 20, batch_size=64, ci=False):
     
     for e in range(nb_epochs):
         print "Epoch ", e
@@ -150,7 +150,8 @@ def adverse_model_train(train, ad_model, gen_model, word_index, glove, nb_epochs
         for i, train_index in mb:
             if len(train_index) != batch_size:
                 continue
-            X, y = adverse_batch([train[k] for k in train_index], word_index, gen_model, len(train))              
+            class_indices = [i % 3] * batch_size if ci else None
+            X, y = adverse_batch([train[k] for k in train_index], word_index, gen_model, len(train), class_indices = class_indices)              
             loss = ad_model.train_on_batch(X, y)[0]
             p.add(len(X),[('train_loss', loss)])
 
@@ -185,9 +186,9 @@ def adverse_generate(gen_model, ad_model, train, word_index, threshold = 0.95, b
 
              
 
-def adverse_batch(orig_batch, word_index, gen_model, train_len):
+def adverse_batch(orig_batch, word_index, gen_model, train_len, class_indices = None):
     probs = generation_predict_embed(gen_model, word_index.index, orig_batch,
-                     np.random.random_integers(0, train_len, len(orig_batch)))
+                     np.random.random_integers(0, train_len, len(orig_batch)), class_indices=class_indices)
     gen_batch = get_classes(probs)
 
     _, X_hypo, _ = load_data.prepare_split_vec_dataset(orig_batch, word_index.index)
@@ -250,15 +251,14 @@ def train_model_embed(train, dev, glove, model, model_dir = 'models/curr_model',
         model.save_weights(model_dir + '/model~' + str(e))
 
 
-def generation_predict_embed(model, word_index, batch, embed_indices, batch_size = 64, hs = True, ci = True, class_index = -1):
+def generation_predict_embed(model, word_index, batch, embed_indices, batch_size = 64, hs = True, class_indices = None):
     prem, hypo, y = load_data.prepare_split_vec_dataset(batch, word_index)
     X_p = load_data.pad_sequences(prem, maxlen=PREM_LEN, dim = -1)
     
     data = {'premise_input': X_p, 'embed_input': embed_indices[:,None]}
     
-    if ci:
-      C = np.zeros((batch_size, 3))
-      C[0][class_index] = 1
+    if class_indices is not None:
+      C = load_data.convert_to_one_hot(class_indices, 3)
       data['class_input'] = C
     
     if hs:
@@ -330,14 +330,15 @@ def hypo_to_string(hypo, eos = 'EOS'):
         return " ".join(hypo)
  
 
-def test_genmodel(gen_model, train, dev, word_index, classify_model = None, glove_alter = None, batch_size = 64):
+def test_genmodel(gen_model, train, dev, word_index, classify_model = None, glove_alter = None, batch_size = 64, ci = False):
    
     gens_count = 6
     dev_counts = 6
     gens = []
     for i in range(gens_count):
         creatives = np.random.random_integers(0, len(train), batch_size)
-        preds = generation_predict_embed(gen_model, word_index.index, dev[:batch_size], creatives)
+        class_index = i % 3 if ci else -1
+        preds = generation_predict_embed(gen_model, word_index.index, dev[:batch_size], creatives, class_indices = [i % 3] * batch_size)
         gens.append(get_classes(preds))
         
     for j in range(dev_counts):
@@ -347,17 +348,17 @@ def test_genmodel(gen_model, train, dev, word_index, classify_model = None, glov
         for i in range(gens_count):
             gen_lex = gens[i][j]
             gen_str = word_index.print_seq(gen_lex)
+            if ci:
+               gen_str = load_data.LABEL_LIST[i%3][0] + ' ' + gen_str
             
             if classify_model != None and glove_alter != None: 
-                probs = misc.predict_example(" ".join(ex[0]), gen_str, classify_model, glove_alter)
-                print probs[0][0][2], gen_str
+                probs = misc.predict_example(" ".join(dev[j][0]), gen_str, classify_model, glove_alter)
+                print probs[0][0][i%3], gen_str
             else:
                 print gen_str
         print
 
 
-def load_model(json):
-    return model_from_json(json)    
 if __name__ == "__main__":
     train, dev, test = load_data.load_all_snli_datasets('data/snli_1.0/')
     glove = load_data.import_glove('data/snli_vectors.txt')
