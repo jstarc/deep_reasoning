@@ -136,6 +136,39 @@ def adverse_generate(gen_model, ad_model, train, word_index, threshold = 0.95, b
         if len(results) > 64:
             print (i + 1) * batch_size 
             return results
+
+def adverse_generate2(gen_model, ad_model, cmodel, train, word_index, glove, threshold = 0.95, batch_size = 64, ci = False):
+    mb = load_data.get_minibatches_idx(len(train), batch_size, shuffle=True)
+    p = Progbar(len(train))
+    results = []
+    for i, train_index in mb:
+        if len(train_index) != batch_size:
+            continue
+        orig_batch = [train[k] for k in train_index]
+        class_indices = [load_data.LABEL_LIST.index(train[k][2]) for k in train_index]
+        probs = generation.generation_predict_embed(gen_model, word_index.index, orig_batch,
+                     np.random.random_integers(0, len(train), len(orig_batch)), class_indices = class_indices)
+        gen_batch = generation.get_classes(probs)
+        ad_preds = ad_model.predict_on_batch(gen_batch)[0].flatten()
+        
+        X = []
+        for i in range(len(orig_batch)):
+	    concat = orig_batch[i][0] + ["--"] + word_index.get_seq(gen_batch[i])
+            X.append(load_data.load_word_vecs(concat, glove))
+        X = np.array(X)
+        X_padded = load_data.pad_sequences(X, dim = len(X[0][0]))
+        cpreds = cmodel.predict_on_batch(X_padded)[0][np.arange(len(X_padded)), class_indices]
+        
+        pred_seq = [word_index.print_seq(gen) for gen in gen_batch]
+        premises = [" ".join(ex[0]) for ex in orig_batch]
+        classes = np.array(load_data.LABEL_LIST)[class_indices]
+        zipped = zip(cpreds, ad_preds, premises, pred_seq, classes)
+        results += [el for el in zipped if el[0] * el[1]> threshold]
+        p.add(len(train_index),[('added', float(len([el for el in zipped if el[0] * el[1]> threshold])))])
+        if len(results) > 200:
+            print (i + 1) * batch_size
+            return results
+    return results
             
 def adverse_batch(orig_batch, word_index, gen_model, train_len, class_indices = None, hypo_len = 12, separate = True):
     probs = generation.generation_predict_embed(gen_model, word_index.index, orig_batch,

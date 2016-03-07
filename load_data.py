@@ -129,7 +129,10 @@ class WordIndex(object):
         words = self.keys[sequence]
         words = [w for w in words if w != 'EOS']
         return " ".join(words)
-        
+
+    def get_seq(self, sequence):
+        words = self.keys[sequence]
+        return [w for w in words if w != 'EOS']
 
 def load_word_vec(token, glove):
     if token not in glove:
