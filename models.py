@@ -98,7 +98,7 @@ def train_model(train, dev, glove, model, model_dir =  'models/curr_model', nb_e
 
 def train_model_graph(train, dev, glove, model, model_dir =  'models/curr_model', nb_epochs = 20, batch_size = 128, worse_steps = 5):
     validation_freq = 1000
-    X_dev_p, X_dev_h, y_dev = load_data.prepare_split_vec_dataset(dev, glove)
+    X_dev_p, X_dev_h, y_dev = load_data.prepare_split_vec_dataset(dev, glove=glove)
     test_losses = []
     stats = [['iter', 'train_loss', 'dev_loss', 'dev_acc']]
     exit_loop = False
@@ -106,14 +106,15 @@ def train_model_graph(train, dev, glove, model, model_dir =  'models/curr_model'
     
     if not os.path.exists(model_dir):
          os.makedirs(model_dir)
-    
+    open(model_dir + '/model.json', 'w').write(model.to_json())    
+
     for e in range(nb_epochs): 
         print "Epoch ", e
-        #mb = load_data.get_minibatches_idx(len(train), batch_size, shuffle=True)
-        mb = load_data.get_minibatches_idx_bucketing_both(train,([9,11,13,16,22],[6,7,8,10,13]), batch_size, shuffle=True)
+        mb = load_data.get_minibatches_idx(len(train), batch_size, shuffle=True)
+        #mb = load_data.get_minibatches_idx_bucketing_both(train,([9,11,13,16,22],[6,7,8,10,13]), batch_size, shuffle=True)
         p = Progbar(len(train))
         for i, train_index in mb:
-            X_train_p, X_train_h, y_train = load_data.prepare_split_vec_dataset([train[k] for k in train_index], glove)
+            X_train_p, X_train_h, y_train = load_data.prepare_split_vec_dataset([train[k] for k in train_index], glove=glove)
             padded_p = load_data.pad_sequences(X_train_p, dim = embed_size)
             padded_h = load_data.pad_sequences(X_train_h, dim = embed_size)
             data = {'premise_input': padded_p, 'hypo_input': padded_h, 'output' : y_train}
@@ -131,7 +132,6 @@ def train_model_graph(train, dev, glove, model, model_dir =  'models/curr_model'
                     break
                 else:
                     fn = model_dir + '/model' '~' + str(iter)
-                    open(fn + '.json', 'w').write(model.to_json())
                     model.save_weights(fn + '.h5')
         if exit_loop:
             break
@@ -168,7 +168,7 @@ def validate_model(model, X_dev, y_dev, batch_size):
     return loss, acc
 
 def update_model_once(model, glove, train_data):
-    X_train, y_train = load_data.prepare_vec_dataset(train_data, glove)
+    X_train, y_train = load_data.prepare_vec_dataset(train_data, glove=glove)
     X_padded = load_data.pad_sequences(X_train, dim = len(X_train[0][0]))
     model.train_on_batch(X_padded, y_train, accuracy=True)    
         
