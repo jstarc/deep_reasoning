@@ -123,9 +123,9 @@ def train_model_embed(train, dev, glove, model, model_dir = 'models/curr_model',
             
             data = {'premise_input': padded_p, 'embed_input': np.expand_dims(np.array(train_index), axis=1), 'output' : padded_h}
             if ci:
-               data['class_input'] = y_train
+                data['class_input'] = y_train
             if hs:
-		data['train_input'] = padded_h
+                data['train_input'] = padded_h
                 data['output'] = np.ones((batch_size, HYPO_LEN, 1))
             
             #sw = (padded_h != 0).astype(float)
