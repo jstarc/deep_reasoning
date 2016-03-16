@@ -217,8 +217,8 @@ def train_seq2seq_batch(train, model, glove):
     
 def test_genmodel(gen_model, train, dev, word_index, classify_model = None, glove_alter = None, batch_size = 64, ci = False):
    
-    gens_count = 1
-    dev_counts = 3
+    gens_count = 2
+    dev_counts = 5
     gens = []
     for i in range(gens_count):
         creatives = np.random.random_integers(0, len(train), (batch_size,1))
@@ -313,10 +313,10 @@ class LstmAttentionLayer2(Recurrent):
     def get_output(self, train=False):
         # input shape: (nb_samples, time (padded with zeros), input_dim)
         X = self.get_input(train)
-        self.h_s = X[0]
+        self.h_t = X[1]
         
         if not self.stateful or self.reset:
-            self.h_t = X[1]
+            self.h_s = X[0]
             self.h_init = X[2]
 
             self.P_j = K.dot(self.h_s, self.W_s)
