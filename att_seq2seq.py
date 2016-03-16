@@ -108,12 +108,12 @@ def seq2seq_test_model(train_model, examples, hidden_size, embed_size, glove, ba
                    merge_mode = 'join')
     graph.add_output(name='output', input='softmax')
     
-    graph.compile(loss={'output': hs_categorical_crossentropy}, optimizer='adam')
-    
     hypo_layer.set_weights(train_model.nodes['hypo'].get_weights())
     attention.set_weights(train_model.nodes['attention'].get_weights())
-    hs.set_weights(train_model.nodes['softmax'].get_weights())
-        
+    hs.set_weights(train_model.nodes['softmax'].get_weights())    
+    
+    graph.compile(loss={'output': hs_categorical_crossentropy}, optimizer='adam')
+    
     func_premise = theano.function([train_model.inputs['premise_input'].get_input()],
                                     train_model.nodes['premise'].get_output(False), 
                                     allow_input_downcast=True)
@@ -171,10 +171,8 @@ def generation_predict_embed(test_model_funcs, word_index, batch, embed_indices,
                 'hypo_input': word_input,
                 'train_input': np.zeros((batch_size,1))}
         preds = tmodel.predict_on_batch(data)['output']
-        word_input = np.argmax(preds, axis = 2)
-        print word_input
-        result.append(word_input)
-    result = np.transpose(np.array(result), (1,0,2))
+        result.append(preds)
+    result = np.transpose(np.array(result)[:,:,-1,:], (1,0,2))
     return result
     
     
@@ -219,14 +217,14 @@ def train_seq2seq_batch(train, model, glove):
     
 def test_genmodel(gen_model, train, dev, word_index, classify_model = None, glove_alter = None, batch_size = 64, ci = False):
    
-    gens_count = 6
-    dev_counts = 6
+    gens_count = 1
+    dev_counts = 3
     gens = []
     for i in range(gens_count):
         creatives = np.random.random_integers(0, len(train), (batch_size,1))
         preds = generation_predict_embed(gen_model, word_index.index, dev[:batch_size], creatives, class_indices = [i % 3] * batch_size)
         gens.append(generation.get_classes(preds))
-        
+
     for j in range(dev_counts):
         print " ".join(dev[j][0])
         print " ".join(dev[j][1])
@@ -322,12 +320,14 @@ class LstmAttentionLayer2(Recurrent):
             self.h_init = X[2]
 
             self.P_j = K.dot(self.h_s, self.W_s)
-            if self.stateful and self.reset:
-                self.reset = False
 
-        initial_states = self.get_initial_states(self.h_t)
-        initial_states[0] = self.h_init
-        last_output, outputs, states = K.rnn(self.step, self.h_t, initial_states)
+            self.states = self.get_initial_states(self.h_t)
+            self.states[0] = self.h_init
+            if self.stateful and self.reset:
+                self.reset = False        
+        
+        last_output, outputs, states = K.rnn(self.step, self.h_t, self.states)
+        self.states = states
         return outputs
 
     def get_initial_states(self, X):

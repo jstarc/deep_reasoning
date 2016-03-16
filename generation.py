@@ -201,7 +201,7 @@ def test_genmodel(gen_model, train, dev, word_index, classify_model = None, glov
         creatives = np.random.random_integers(0, len(train), batch_size)
         preds = generation_predict_embed(gen_model, word_index.index, dev[:batch_size], creatives, class_indices = [i % 3] * batch_size)
         gens.append(get_classes(preds))
-        
+
     for j in range(dev_counts):
         print " ".join(dev[j][0])
         print " ".join(dev[j][1])
