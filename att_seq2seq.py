@@ -121,11 +121,11 @@ def seq2seq_test_model(train_model, examples, hidden_size, embed_size, glove, ba
                                   train_model.inputs['class_input'].get_input()],
                                   train_model.nodes['creative'].get_output(False),
                                   allow_input_downcast=True)                            
-                                    
+
     return graph, func_premise, func_noise
     
     
-    
+
 def train_att_seq2seq(train, dev, glove, model, model_dir = 'models/curr_model', nb_epochs = 20, batch_size = 64, prem_len = 22, hypo_len = 12):
     word_index = load_data.WordIndex(glove)
     for e in range(nb_epochs):
@@ -163,6 +163,8 @@ def generation_predict_embed(test_model_funcs, word_index, batch, embed_indices,
     noise = noise_func(embed_indices, load_data.convert_to_one_hot(class_indices, 3))
     
     tmodel.reset_states()
+    tmodel.nodes['attention'].feed_state(noise)
+
     word_input = np.zeros((batch_size, 1))
     result = []
     for i in range(hypo_len):
@@ -243,15 +245,56 @@ def test_genmodel(gen_model, train, dev, word_index, classify_model = None, glov
         print
     
 
+def debug_models(model, tmodel, train, wi):
+    X_train_p, X_train_h , y_train = load_data.prepare_split_vec_dataset([train[k] for k in range(64)], wi.index)
+    padded_p = load_data.pad_sequences(X_train_p, maxlen = 22, dim = -1, padding = 'pre')
+    padded_h = load_data.pad_sequences(X_train_h, maxlen = 12, dim = -1, padding = 'post')
+    hypo_input = np.concatenate([np.zeros((64, 1)), padded_h], axis = 1)
+    train_input = np.concatenate([padded_h, np.zeros((64, 1))], axis = 1)
+    noise_input = np.arange(64)[:,None]    
+    pi = model.inputs['premise_input'].get_input()
+    hi = model.inputs['hypo_input'].get_input()
+    ti = model.inputs['train_input'].get_input()
+    ni = model.inputs['noise_input'].get_input()
+    ci = model.inputs['class_input'].get_input()
+    out = model.outputs['output'].get_output(True)
+    cout = model.nodes['creative'].get_output(True)
+    pout = model.nodes['premise'].get_output(True)
+    hout = model.nodes['hypo'].get_output(True)
+    aout = model.nodes['attention'].get_output(True)
+    ff = theano.function([pi,hi,ti,ni,ci], [out, cout, pout,hout, aout], allow_input_downcast=True)
+    res5 = ff(padded_p, hypo_input, train_input, noise_input, y_train)
+    
+    word_input =  np.zeros((64, 1))
+    tmhi = tmodel[0].inputs['hypo_input'].get_input()
+    tmp = tmodel[0].inputs['premise'].get_input()
+    tmc = tmodel[0].inputs['creative'].get_input()
+
+    premise = tmodel[1](padded_p)
+    noise = tmodel[2](noise_input, y_train)
+
+    print (premise == res5[3])
+    
+    hypo_f = theano.function([tmhi], tmodel[0].nodes['hypo'].get_output(False), allow_input_downcast = True)
+    
+    ho = hypo_f(word_input)
+
+    tmodel[0].nodes['attention'].feed_state(noise)
+    att_test_fun =  theano.function([tmhi, tmp, tmc], tmodel[0].nodes['attention'].get_output(False), allow_input_downcast = True)
+    
+    print word_input.shape, premise.shape, noise.shape 
+    atto = att_test_fun(word_input, premise, noise)
+    return res5, atto
+    
+    
     
 
-      
-        
+
 class LstmAttentionLayer2(Recurrent):
 
     def __init__(self, output_dim, init='glorot_uniform', inner_init='orthogonal',
                  forget_bias_init='one', activation='tanh',
-                 inner_activation='hard_sigmoid', **kwargs):
+                 inner_activation='hard_sigmoid', batch_size = 64, **kwargs):
 
         self.output_dim = output_dim
         self.init = initializations.get(init)
@@ -259,6 +302,7 @@ class LstmAttentionLayer2(Recurrent):
         self.forget_bias_init = initializations.get(forget_bias_init)
         self.activation = activations.get(activation)
         self.inner_activation = activations.get(inner_activation)
+        self.batch_size = batch_size
         super(LstmAttentionLayer2, self).__init__(**kwargs)
 
     def set_previous(self, layer):
@@ -272,6 +316,12 @@ class LstmAttentionLayer2(Recurrent):
 
 
     def build(self):
+  
+        if self.stateful:
+            self.reset_states()
+        else:
+            self.states = [None, None]
+
         self.W_s = self.init((self.output_dim, self.output_dim))
         self.W_t = self.init((self.output_dim, self.output_dim))
         self.W_a = self.init((self.output_dim, self.output_dim))
@@ -294,10 +344,6 @@ class LstmAttentionLayer2(Recurrent):
         self.b_o = K.zeros((self.output_dim,))
         
         
-        self.states = [None, None]
-        if self.stateful:
-            self.reset_states()
-        
         self.params = [self.W_s, self.W_t, self.W_a, self.w_e,
                        self.W_i, self.U_i, self.b_i,
                        self.W_c, self.U_c, self.b_c,
@@ -307,7 +353,17 @@ class LstmAttentionLayer2(Recurrent):
     
     def reset_states(self):
         assert self.stateful, 'Layer must be stateful.'
-        self.reset = True
+
+        if hasattr(self, 'states'):
+            K.set_value(self.states[0], np.zeros((self.batch_size, self.output_dim)))
+            K.set_value(self.states[1], np.zeros((self.batch_size, self.output_dim)))
+        else:
+            self.states = [np.zeros((self.batch_size, self.output_dim)), 
+                      np.zeros((self.batch_size, self.output_dim))]
+
+    def feed_state(self, noise):
+        self.states[0] = noise
+
 
 
     def get_output(self, train=False):
@@ -315,18 +371,19 @@ class LstmAttentionLayer2(Recurrent):
         X = self.get_input(train)
         self.h_t = X[1]
         
-        if not self.stateful or self.reset:
-            self.h_s = X[0]
-            self.h_init = X[2]
-
-            self.P_j = K.dot(self.h_s, self.W_s)
-
-            self.states = self.get_initial_states(self.h_t)
-            self.states[0] = self.h_init
-            if self.stateful and self.reset:
-                self.reset = False        
         
-        last_output, outputs, states = K.rnn(self.step, self.h_t, self.states)
+        self.h_s = X[0]
+        self.h_init = X[2]
+
+        self.P_j = K.dot(self.h_s, self.W_s)
+        
+        if self.stateful and not train:
+            initial_states = self.states
+        else:
+            initial_states = self.get_initial_states(self.h_s)
+            initial_states[0] = self.h_init
+
+        last_output, outputs, states = K.rnn(self.step, self.h_t, initial_states)
         self.states = states
         return outputs
 
