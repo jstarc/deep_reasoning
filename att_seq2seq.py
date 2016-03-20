@@ -204,8 +204,7 @@ def train_seq2seq_batch(train, model, glove):
     word_index = load_data.WordIndex(glove)
     X_train_p, X_train_h , y_train = load_data.prepare_split_vec_dataset([train[k] for k in range(64)], word_index.index)
     padded_p = load_data.pad_sequences(X_train_p, maxlen = 22, dim = -1, padding = 'pre')
-    padded_h = load_data.pad_sequences(X_train_h, maxlen = 12, dim = -1, padding = 'post')
-    
+    padded_h = load_data.pad_sequences(X_train_h, maxlen = 12, dim = -1, padding = 'post')    
     
     print padded_h.shape
     data = {'premise_input': padded_p, 
@@ -263,28 +262,51 @@ def debug_models(model, tmodel, train, wi):
     hout = model.nodes['hypo'].get_output(True)
     aout = model.nodes['attention'].get_output(True)
     ff = theano.function([pi,hi,ti,ni,ci], [out, cout, pout,hout, aout], allow_input_downcast=True)
-    res5 = ff(padded_p, hypo_input, train_input, noise_input, y_train)
     
     word_input =  np.zeros((64, 1))
+    res5 = ff(padded_p, hypo_input, train_input, noise_input, y_train)
+    
     tmhi = tmodel[0].inputs['hypo_input'].get_input()
     tmp = tmodel[0].inputs['premise'].get_input()
     tmc = tmodel[0].inputs['creative'].get_input()
-
+    tmt = tmodel[0].inputs['train_input'].get_input()     
     premise = tmodel[1](padded_p)
     noise = tmodel[2](noise_input, y_train)
-
-    print (premise == res5[3])
+   
+    print (premise == res5[2]).all()
+    print (noise == res5[1]).all()
     
-    hypo_f = theano.function([tmhi], tmodel[0].nodes['hypo'].get_output(False), allow_input_downcast = True)
     
-    ho = hypo_f(word_input)
-
+    #hypo_f = theano.function([tmhi], tmodel[0].nodes['hypo'].get_output(False), allow_input_downcast = True,
+    #                             updates=tmodel[0].nodes['hypo'].updates)
+    
+    #ho = hypo_f(word_input)
+    #ho2 = hypo_f(word_input)
+    #print ho[0][0] == ho2[0][0]
+    #print (ho[0][0] == res5[3][0][0]).all()
+    #print type(tmodel[0].nodes['attention'].states[0])
+    tmodel[0].reset_states()
     tmodel[0].nodes['attention'].feed_state(noise)
-    att_test_fun =  theano.function([tmhi, tmp, tmc], tmodel[0].nodes['attention'].get_output(False), allow_input_downcast = True)
+    #print (tmodel[0].nodes['attention'].states[0].get_value() == noise).all() 
+    #taout = tmodel[0].nodes['attention'].get_output(False)
+    #att_test_fun =  theano.function([tmhi, tmp, tmc], taout, allow_input_downcast = True, on_unused_input = 'ignore')
     
-    print word_input.shape, premise.shape, noise.shape 
-    atto = att_test_fun(word_input, premise, noise)
-    return res5, atto
+    #atto = att_test_fun(word_input, premise, noise)
+
+    #print (atto[0][0] == res5[4][0][0]).all()
+   
+    att_test_fun2 =  theano.function([tmhi, tmp, tmc, tmt], tmodel[0].outputs['output'].get_output(False), 
+                         allow_input_downcast = True, on_unused_input = 'ignore', updates=tmodel[0].state_updates)
+    atto2 = att_test_fun2(word_input, premise, noise, word_input)
+    
+    print (res5[0][0][0] == atto2[0][0][padded_h[0][0]]).all()
+    print np.argmax(atto2[0][0]), padded_h[0][0]
+
+    atto3 = att_test_fun2(padded_h[:,0, None], premise, noise, word_input)
+    print (res5[0][0][1] == atto3[0][0][padded_h[0][1]]).all()
+    print res5[0][0][1], atto3[0][0][padded_h[0][1]]
+    print np.argmax(atto3[0][0]), padded_h[0][1]
+    return res5, atto2
     
     
     
@@ -344,7 +366,7 @@ class LstmAttentionLayer2(Recurrent):
         self.b_o = K.zeros((self.output_dim,))
         
         
-        self.params = [self.W_s, self.W_t, self.W_a, self.w_e,
+        self.trainable_weights = [self.W_s, self.W_t, self.W_a, self.w_e,
                        self.W_i, self.U_i, self.b_i,
                        self.W_c, self.U_c, self.b_c,
                        self.W_f, self.U_f, self.b_f,
@@ -358,11 +380,12 @@ class LstmAttentionLayer2(Recurrent):
             K.set_value(self.states[0], np.zeros((self.batch_size, self.output_dim)))
             K.set_value(self.states[1], np.zeros((self.batch_size, self.output_dim)))
         else:
-            self.states = [np.zeros((self.batch_size, self.output_dim)), 
-                      np.zeros((self.batch_size, self.output_dim))]
+            self.states = [K.zeros((self.batch_size, self.output_dim)), 
+                           K.zeros((self.batch_size, self.output_dim))]
+
 
     def feed_state(self, noise):
-        self.states[0] = noise
+        K.set_value(self.states[0], noise)
 
 
 
@@ -370,7 +393,6 @@ class LstmAttentionLayer2(Recurrent):
         # input shape: (nb_samples, time (padded with zeros), input_dim)
         X = self.get_input(train)
         self.h_t = X[1]
-        
         
         self.h_s = X[0]
         self.h_init = X[2]
@@ -381,10 +403,15 @@ class LstmAttentionLayer2(Recurrent):
             initial_states = self.states
         else:
             initial_states = self.get_initial_states(self.h_s)
-            initial_states[0] = self.h_init
+            initial_states[0] =  self.h_init
 
         last_output, outputs, states = K.rnn(self.step, self.h_t, initial_states)
-        self.states = states
+        
+        if self.stateful:
+            self.updates = []
+            for i in range(len(states)):
+                self.updates.append((self.states[i], states[i]))
+
         return outputs
 
     def get_initial_states(self, X):
