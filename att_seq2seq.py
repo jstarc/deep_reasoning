@@ -174,9 +174,37 @@ def generation_predict_embed(test_model_funcs, word_index, batch, embed_indices,
                 'train_input': np.zeros((batch_size,1))}
         preds = tmodel.predict_on_batch(data)['output']
         result.append(preds)
+        word_input = np.argmax(preds, axis=2)
     result = np.transpose(np.array(result)[:,:,-1,:], (1,0,2))
     return result
-    
+
+def generation_predict_embed_beam(test_model_funcs, word_index, example, embed_index, class_index, batch_size = 64, prem_len = 22, hypo_len = 12):
+    prem, _, _ = load_data.prepare_split_vec_dataset([example], word_index)
+    padded_p = load_data.pad_sequences(prem, maxlen=prem_len, dim = -1)
+    padded_p = np.tile(padded_p, (batch_size, 1))
+
+    tmodel, premise_func, noise_func = test_model_funcs
+    premise = premise_func(padded_p)
+
+    embed_indices = np.tile(embed_index, batch_size)
+    class_indices = np.tile(class_index, batch_size)
+    noise = noise_func(embed_indices, load_data.convert_to_one_hot(class_indices, 3))
+
+    tmodel.reset_states()
+    tmodel.nodes['attention'].feed_state(noise)
+
+    word_input = np.zeros((batch_size, 1))
+    result = []
+    for i in range(hypo_len):
+        data = {'premise' :premise,
+                'creative': noise,
+                'hypo_input': word_input,
+                'train_input': np.zeros((batch_size,1))}
+        preds = tmodel.predict_on_batch(data)['output']
+        result.append(preds)
+        word_input = np.argmax(preds, axis=2)
+    result = np.transpose(np.array(result)[:,:,-1,:], (1,0,2))
+    return result    
     
 
 def test_seq2seq_batch(train, tmodel, premise_func, noise_func, glove, batch_size = 64):
@@ -218,29 +246,34 @@ def train_seq2seq_batch(train, model, glove):
     
 def test_genmodel(gen_model, train, dev, word_index, classify_model = None, glove_alter = None, batch_size = 64, ci = False):
    
-    gens_count = 2
-    dev_counts = 5
+    gens_count = 10
+    dev_counts = 10
+    c_vec = []
+    class_i  = np.array([load_data.LABEL_LIST.index(ex[2]) for ex in dev[:batch_size]])
     gens = []
     for i in range(gens_count):
         creatives = np.random.random_integers(0, len(train), (batch_size,1))
-        preds = generation_predict_embed(gen_model, word_index.index, dev[:batch_size], creatives, class_indices = [i % 3] * batch_size)
+        preds = generation_predict_embed(gen_model, word_index.index, dev[:batch_size], creatives, 
+               class_indices = class_i)
         gens.append(generation.get_classes(preds))
+        c_vec.append(creatives)
 
     for j in range(dev_counts):
         print " ".join(dev[j][0])
-        print " ".join(dev[j][1])
+        print dev[j][2]
+        
         print "Generations: "
         for i in range(gens_count):
             gen_lex = gens[i][j]
             gen_str = word_index.print_seq(gen_lex)
-            if ci:
-               gen_str = load_data.LABEL_LIST[i%3][0] + ' ' + gen_str
-            
-            if classify_model != None and glove_alter != None: 
-                probs = misc.predict_example(" ".join(dev[j][0]), gen_str, classify_model, glove_alter)
-                print probs[0][0][i%3], gen_str
-            else:
-                print gen_str
+            #if ci:
+            #   gen_str = load_data.LABEL_LIST[i%3][0] + ' ' + gen_str
+            #if classify_model != None and glove_alter != None: 
+            #    probs = misc.predict_example(" ".join(dev[j][0]), gen_str, classify_model, glove_alter)
+            #    print probs[0][0][i%3], gen_str
+            #else:
+            #    print gen_str
+            print gen_str
         print
     
 
@@ -306,7 +339,7 @@ def debug_models(model, tmodel, train, wi):
     print (res5[0][0][1] == atto3[0][0][padded_h[0][1]]).all()
     print res5[0][0][1], atto3[0][0][padded_h[0][1]]
     print np.argmax(atto3[0][0]), padded_h[0][1]
-    return res5, atto2
+    return res5, atto2, atto3
     
     
     
