@@ -52,8 +52,7 @@ def make_basic_adverse(glove, embed_size = 50, compile=False, hypo_len = 12):
         discriminator.compile(loss='binary_crossentropy', optimizer='adam')
     return discriminator
 
-def make_adverse_model2(discriminator, glove, embed_size = 100, batch_size = 64, hypo_len = 12):
-    #discriminator = make_basic_adverse(glove, embed_size)
+def make_full_adverse_model(discriminator, glove, embed_size = 100, batch_size = 64, hypo_len = 12):
     
     graph = Graph()
     graph.add_input(name='train_hypo', batch_input_shape=(batch_size, hypo_len), dtype ='int')
@@ -72,7 +71,6 @@ def make_adverse_model2(discriminator, glove, embed_size = 100, batch_size = 64,
     return graph
     
 
-    
 
 def adverse_model_train(train, ad_model, gen_model, word_index, glove, nb_epochs = 20, batch_size=64, ci=False):
     

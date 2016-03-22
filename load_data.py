@@ -1,11 +1,7 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Mon Sep 28 09:37:25 2015
-
-@author: Janez
-"""
 import numpy as np
 import json
+import sys
+sys.path.append('../keras')
 
 DELIMITER = "--"
 LABEL_LIST = ['neutral','contradiction','entailment']
@@ -319,16 +315,33 @@ def prepare_word2vec(model, snli_path):
             glove[token] = model[token]
     return glove
         
+def transform_dataset(dataset, class_str = None, max_prem_len = sys.maxint, max_hypo_len = sys.maxint):
+    uniq = set()
+    result = []
+    for ex in dataset:
+        prem_str = " ".join(ex[0])
+        if class_str == None:
+            prem_str += ex[2]
+        if  (class_str == None or ex[2] == class_str) and prem_str not in uniq and len(ex[0]) <= max_prem_len and len(ex[1]) <= max_hypo_len:
+            result.append(ex)
+            uniq.add(prem_str)
+    return result
 
 
-#train, dev, test = load_all_snli_datasets('data\\snli_1.0\\')
-#glove = import_glove('data\\snli_vectors.txt')
-
-#X_train, y_train = prepare_vec_dataset(train, glove)
-#X_dev, y_dev = prepare_vec_dataset(dev, glove)
 
 
-
+if __name__ == "__main__":
+    train, dev, test = load_all_snli_datasets('data/snli_1.0/')
+    glove = import_glove('data/snli_vectors.txt')
+    
+    train = transform_dataset(train, None, 12, 22)
+    dev = transform_dataset(dev, None, 12, 22)
+    
+    for ex in train+dev:
+        load_word_vecs(ex[0] + ex[1], glove)
+    load_word_vec('EOS', glove)
+    
+    wi = WordIndex(glove)
         
 
 

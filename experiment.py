@@ -24,6 +24,11 @@ if __name__ == "__main__":
     train, dev, test = load_data.load_all_snli_datasets('data/snli_1.0/')
     glove = load_data.import_glove('data/snli_vectors.txt')
 
+    
+    for ex in train+dev:
+        load_data.load_word_vecs(ex[0] + ex[1], glove)
+    load_data.load_word_vec('EOS', glove)
+    wi = load_data.WordIndex(glove)    
 
 def grid_experiments(train, dev, glove, embed_size = 300, hidden_size = 100):
     lr_vec = [0.001, 0.0003, 0.0001]
