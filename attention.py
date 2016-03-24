@@ -57,19 +57,19 @@ class LstmAttentionLayer(Recurrent):
         self.W_a = self.init((self.output_dim, self.output_dim))
         self.w_e = K.zeros((self.output_dim,))
 
-        self.W_i = self.init((self.output_dim * 2, self.output_dim))
+        self.W_i = self.init((2 * self.output_dim, self.output_dim))
         self.U_i = self.inner_init((self.output_dim, self.output_dim))
         self.b_i = K.zeros((self.output_dim,))
 
-        self.W_f = self.init((self.output_dim * 2, self.output_dim))
+        self.W_f = self.init((2 * self.output_dim, self.output_dim))
         self.U_f = self.inner_init((self.output_dim, self.output_dim))
         self.b_f = self.forget_bias_init((self.output_dim,))
 
-        self.W_c = self.init((self.output_dim * 2, self.output_dim))
+        self.W_c = self.init((2 * self.output_dim, self.output_dim))
         self.U_c = self.inner_init((self.output_dim, self.output_dim))
         self.b_c = K.zeros((self.output_dim,))
 
-        self.W_o = self.init((self.output_dim * 2, self.output_dim))
+        self.W_o = self.init((2 * self.output_dim, self.output_dim))
         self.U_o = self.inner_init((self.output_dim, self.output_dim))
         self.b_o = K.zeros((self.output_dim,))
         

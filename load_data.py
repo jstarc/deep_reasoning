@@ -334,12 +334,13 @@ if __name__ == "__main__":
     train, dev, test = load_all_snli_datasets('data/snli_1.0/')
     glove = import_glove('data/snli_vectors.txt')
     
-    train = transform_dataset(train, None, 12, 22)
-    dev = transform_dataset(dev, None, 12, 22)
+    train = transform_dataset(train, None, 22, 12)
+    dev = transform_dataset(dev, None, 22, 12)
     
     for ex in train+dev:
         load_word_vecs(ex[0] + ex[1], glove)
     load_word_vec('EOS', glove)
+    #glove['EOS'] = np.zeros(50)
     
     wi = WordIndex(glove)
         

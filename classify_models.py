@@ -20,10 +20,10 @@ def basic_model(embed_size = 300, hidden_size = 100, lr = 0.001, dropout = 0.0, 
     return model
     
 
-def attention_model(hidden_size, embed_size, glove):
-    premise_layer = LSTM(output_dim=hidden_size, return_sequences=True)
-    hypo_layer = LSTM(output_dim=hidden_size, return_sequences=True)    
-    attention = LstmAttentionLayer(hidden_size)
+def attention_model(hidden_size, glove):
+    premise_layer = LSTM(output_dim=hidden_size, return_sequences=True, inner_activation='sigmoid')
+    hypo_layer = LSTM(output_dim=hidden_size, return_sequences=True, inner_activation='sigmoid')    
+    attention = LstmAttentionLayer(hidden_size, inner_activation='sigmoid')
     
     graph = Graph()
     graph.add_input(name='premise_input', input_shape=(None,) ,dtype= 'int')

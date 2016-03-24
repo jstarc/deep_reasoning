@@ -5,12 +5,12 @@ import numpy as np
 from keras.callbacks import ModelCheckpoint
 
 
-def train_generative_graph(train, wi, model, model_dir =  'models/curr_model', nb_epochs = 20, batch_size = 128):
+def train_generative_graph(train, wi, model, model_dir =  'models/curr_model', nb_epochs = 20, batch_size = 64):
     
     if not os.path.exists(model_dir):
          os.makedirs(model_dir)
     g_train = generative_train_generator(train, wi, batch_size)
-    saver = ModelCheckpoint(model_dir + '/model.weights', monitor = 'loss')
+    saver = ModelCheckpoint(model_dir + '/weights.{epoch:02d}-{loss:.2f}.hdf5', monitor = 'loss')
     
     return model.fit_generator(g_train, samples_per_epoch = len(train), nb_epoch = nb_epochs,  
                                callbacks = [saver])         
