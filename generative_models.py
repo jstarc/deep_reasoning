@@ -89,6 +89,7 @@ def create_o_train_model(examples, hidden_size, embed_size, glove, batch_size = 
     graph.add_input(name='noise_input', batch_input_shape=(batch_size,1), dtype='int32')
     graph.add_node(noise_layer, name='noise_embeddings_pre', input='noise_input')
     graph.add_node(Flatten(), name='noise_embeddings', input='noise_embeddings_pre')
+    
     graph.add_input(name='class_input', batch_input_shape=(batch_size, 3))
     graph.add_node(Dense(hidden_size), inputs=['noise_embeddings', 'class_input'], name ='creative', merge_mode='concat')
     

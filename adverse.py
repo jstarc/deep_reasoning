@@ -43,32 +43,7 @@ def make_adverse_model(generative_model, glove, embed_size = 50, batch_size = 64
     graph.compile(loss={'output2':'mse'}, optimizer='adam')
     return graph
 
-def make_basic_adverse(glove, embed_size = 50, compile=False, hypo_len = 12):
-    discriminator = Sequential()
-    discriminator.add(generation.make_fixed_embeddings(glove, hypo_len))
-    discriminator.add(LSTM(embed_size))
-    discriminator.add(Dense(1, activation='sigmoid'))
-    if compile:
-        discriminator.compile(loss='binary_crossentropy', optimizer='adam')
-    return discriminator
 
-def make_full_adverse_model(discriminator, glove, embed_size = 100, batch_size = 64, hypo_len = 12):
-    
-    graph = Graph()
-    graph.add_input(name='train_hypo', batch_input_shape=(batch_size, hypo_len), dtype ='int')
-    graph.add_input(name='gen_hypo', batch_input_shape=(batch_size, hypo_len), dtype ='int')
-    graph.add_shared_node(discriminator, name='shared', inputs=['train_hypo', 'gen_hypo'], merge_mode='join')
-    
-    def margin_opt(inputs):
-        print(inputs)
-        assert len(inputs) == 2, ('Margin Output needs '
-                              '2 inputs, %d given' % len(inputs))
-        u, v = inputs.values()
-        return K.log(u) + K.log(1-v)
-    
-    graph.add_node(Lambda(margin_opt), name = 'output2', input='shared', create_output = True)
-    graph.compile(loss={'output2':'mse'}, optimizer='adam')
-    return graph
     
 
 
@@ -96,7 +71,8 @@ def adverse_model2_train(train, ad_model, gen_model, word_index, glove, nb_epoch
             if len(train_index) != batch_size:
                 continue
             class_indices = [i % 3] * batch_size if ci else None
-            train_b, gen_b, y = adverse_batch([train[k] for k in train_index], word_index, gen_model, len(train), class_indices = class_indices, separate = False)
+            train_b, gen_b, y = adverse_batch([train[k] for k in train_index], word_index, gen_model, len(train), 
+                                              class_indices = class_indices, separate = False)
             data = {'train_hypo' : train_b, 'gen_hypo': gen_b, 'output2': y}
             loss = ad_model.train_on_batch(data)[0]
             p.add(len(train_b),[('train_loss', loss)])
@@ -168,20 +144,7 @@ def adverse_generate2(gen_model, ad_model, cmodel, train, word_index, glove, thr
             return results
     return results
             
-def adverse_batch(orig_batch, word_index, gen_model, train_len, class_indices = None, hypo_len = 12, separate = True):
-    probs = generation.generation_predict_embed(gen_model, word_index.index, orig_batch,
-                     np.random.random_integers(0, train_len, len(orig_batch)), class_indices=class_indices)
-    gen_batch = generation.get_classes(probs)
 
-    _, X_hypo, _ = load_data.prepare_split_vec_dataset(orig_batch, word_index.index)
-    train_batch = load_data.pad_sequences(X_hypo, maxlen = hypo_len, dim = -1, padding = 'post')
-
-    if separate:
-        X = np.concatenate([gen_batch, train_batch])
-        y = np.concatenate([np.zeros(len(gen_batch)), np.ones(len(train_batch))])
-        return X,y
-    else:
-        return train_batch, gen_batch, np.zeros(len(gen_batch))
 
     
 
