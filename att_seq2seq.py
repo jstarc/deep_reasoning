@@ -137,7 +137,7 @@ def train_seq2seq_batch(train, model, glove):
     train_loss = float(model.train_on_batch(data)[0])
     
 def test_genmodel(gen_model, train, dev, word_index, classify_model = None, glove_alter = None, batch_size = 64, ci = False):
-   
+    from generative_alg import generative_predict
     gens_count = 10
     dev_counts = 10
     c_vec = []
@@ -145,9 +145,9 @@ def test_genmodel(gen_model, train, dev, word_index, classify_model = None, glov
     gens = []
     for i in range(gens_count):
         creatives = np.random.random_integers(0, len(train), (batch_size,1))
-        preds = generation_predict_embed(gen_model, word_index.index, dev[:batch_size], creatives, 
+        preds = generative_predict(gen_model, word_index.index, dev[:batch_size], creatives, 
                class_indices = class_i)
-        gens.append(generation.get_classes(preds))
+        gens.append(np.argmax(preds, axis = 2))
         c_vec.append(creatives)
 
     for j in range(dev_counts):

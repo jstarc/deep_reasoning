@@ -92,7 +92,7 @@ class LstmAttentionLayer(Recurrent):
                            K.zeros((self.batch_size, self.output_dim))]
 
 
-    def feed_state(self, noise):
+    def set_state(self, noise):
         K.set_value(self.states[0], noise)
 
 

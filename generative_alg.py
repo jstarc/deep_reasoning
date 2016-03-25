@@ -50,7 +50,7 @@ def generative_predict(test_model, word_index, batch, embed_indices, class_indic
     noise = noise_func(embed_indices, load_data.convert_to_one_hot(class_indices, 3))
     
     core_model.reset_states()
-    core_model.nodes['attention'].feed_state(noise)
+    core_model.nodes['attention'].set_state(noise)
 
     word_input = np.zeros((batch_size, 1))
     result = []
