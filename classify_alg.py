@@ -13,7 +13,7 @@ def train_classify_graph(train, dev, wi, model, model_dir =  'models/curr_model'
     es = EarlyStopping(patience = 5)
     saver = ModelCheckpoint(model_dir + '/model.weights', monitor = 'val_loss')
     
-    return model.fit_generator(g_train, samples_per_epoch = batch_size * 1000, nb_epoch = nb_epochs, 
+    return model.fit_generator(g_train, samples_per_epoch = batch_size * 100, nb_epoch = nb_epochs, 
                                validation_data = g_dev, nb_val_samples = len(dev), show_accuracy=True, 
                                callbacks = [saver, es])
         
