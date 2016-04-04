@@ -45,7 +45,16 @@ def ca_generator(train, gen_model, discriminator, class_model, noise_embed_len, 
             yield batch
             batch = {}
                  
-def print_ca_batch(ca_batch, wi):
+def print_ca_batch(ca_batch, wi, csv_file = None):
+    
+    writer = None
+    
+    if csv_file is not None:
+        import csv
+        csvf =  open(csv_file, 'wb')
+        writer = csv.writer(csvf)
+        writer.writerow(['premise', 'hypo', 'label', 'sanity', 'class_prob'])
+
     for i in range(len(ca_batch[ca_batch.keys()[0]])):
         premise = wi.print_seq(ca_batch['premise'][i].astype('int'))
         hypo = wi.print_seq(ca_batch['hypo'][i].astype('int'))
@@ -53,8 +62,13 @@ def print_ca_batch(ca_batch, wi):
         label = load_data.LABEL_LIST[ca_batch['label'][i]]
         class_prob = ca_batch['class_pred'][i][ca_batch['label'][i]]
    
-        print premise
-        print hypo
-        print label, "sanity", sanity, 'cprob', class_prob
-        print
+        if csv_file is None:
+            print premise
+            print hypo
+            print label, "sanity", sanity, 'cprob', class_prob
+            print
+        else:
+            writer.writerow([premise, hypo, label, sanity, class_prob])                
     
+    if csv_file is not None:
+        csvf.close()
