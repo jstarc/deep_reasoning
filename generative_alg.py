@@ -1,6 +1,7 @@
 import os
 import load_data
 import numpy as np
+from keras.backend import theano_backend as K 
 
 from keras.callbacks import ModelCheckpoint
 
@@ -65,3 +66,50 @@ def generative_predict(test_model, word_index, batch, embed_indices, class_indic
     result = np.transpose(np.array(result)[:,:,-1,:], (1,0,2))
     return result
     
+
+def generative_predict_beam(test_model, word_index, example, embed_index, class_index, batch_size = 64, prem_len = 22, 
+                       hypo_len = 12):
+    prem, _, _ = load_data.prepare_split_vec_dataset([example], word_index)
+    padded_p = load_data.pad_sequences(prem, maxlen=prem_len, dim = -1)     
+    padded_p = np.tile(padded_p[0], (batch_size,1))    
+    
+    core_model, premise_func, noise_func = test_model
+    premise = premise_func(padded_p)
+    
+    embed_vec = np.repeat(embed_index, batch_size)[:, None]
+    noise = noise_func(embed_vec, load_data.convert_to_one_hot(np.repeat(class_index, batch_size), 3))
+   
+    
+    core_model.reset_states()
+    core_model.nodes['attention'].set_state(noise)
+
+    word_input = np.zeros((batch_size, 1))
+    result = []
+    probs = None
+    for i in range(hypo_len):
+        data = {'premise' :premise,
+                'creative': noise,
+                'hypo_input': word_input,
+                'train_input': np.zeros((batch_size,1))}
+        preds = core_model.predict_on_batch(data)['output']
+        if probs is None:
+            probs = preds[0][0][np.argpartition(-preds[0][0], batch_size)[:batch_size]]
+            word_input = np.argmax(preds, axis=2)
+        else:
+            compound_probs =  (preds[:,-1,:] * probs[:, None]).flatten()
+            max_indices = np.argpartition(-compound_probs, batch_size)[:batch_size]
+            probs = compound_probs[max_indices]
+            word_input = (max_indices % preds.shape[-1])[:,None]
+            state_indices = max_indices / preds.shape[-1]
+            shuffle_states(core_model, state_indices)
+            
+        result.append(preds)
+          
+    result = np.transpose(np.array(result)[:,:,-1,:], (1,0,2))
+    return result
+    
+def shuffle_states(graph_model, indices):
+    for l in graph_model.nodes.values():
+        if getattr(l, 'stateful', False): 
+            for s in l.states:
+                s = s[indices]
