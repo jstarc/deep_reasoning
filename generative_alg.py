@@ -69,7 +69,7 @@ def generative_predict(test_model, word_index, batch, embed_indices, class_indic
 
 def generative_predict_beam(test_model, word_index, example, embed_index, class_index, batch_size = 64, prem_len = 22, 
                        hypo_len = 12):
-    prem, _, _ = load_data.prepare_split_vec_dataset([example], word_index)
+    prem, _, _ = load_data.prepare_split_vec_dataset([example], word_index.index)
     padded_p = load_data.pad_sequences(prem, maxlen=prem_len, dim = -1)     
     padded_p = np.tile(padded_p[0], (batch_size,1))    
     
@@ -84,7 +84,7 @@ def generative_predict_beam(test_model, word_index, example, embed_index, class_
     core_model.nodes['attention'].set_state(noise)
 
     word_input = np.zeros((batch_size, 1))
-    result = []
+    words = None
     probs = None
     for i in range(hypo_len):
         data = {'premise' :premise,
@@ -92,9 +92,12 @@ def generative_predict_beam(test_model, word_index, example, embed_index, class_
                 'hypo_input': word_input,
                 'train_input': np.zeros((batch_size,1))}
         preds = core_model.predict_on_batch(data)['output']
+        
         if probs is None:
-            probs = preds[0][0][np.argpartition(-preds[0][0], batch_size)[:batch_size]]
-            word_input = np.argmax(preds, axis=2)
+            word_input = np.argpartition(-preds[0][0], batch_size)[:batch_size]
+            probs = preds[0][0][word_input]
+            word_input= word_input[:,None]
+            words = np.array(word_input)
         else:
             compound_probs =  (preds[:,-1,:] * probs[:, None]).flatten()
             max_indices = np.argpartition(-compound_probs, batch_size)[:batch_size]
@@ -102,14 +105,11 @@ def generative_predict_beam(test_model, word_index, example, embed_index, class_
             word_input = (max_indices % preds.shape[-1])[:,None]
             state_indices = max_indices / preds.shape[-1]
             shuffle_states(core_model, state_indices)
-            
-        result.append(preds)
-          
-    result = np.transpose(np.array(result)[:,:,-1,:], (1,0,2))
-    return result
+            words = np.concatenate([words[state_indices], word_input], axis = -1) 
+    return words, probs
     
 def shuffle_states(graph_model, indices):
     for l in graph_model.nodes.values():
         if getattr(l, 'stateful', False): 
             for s in l.states:
-                s = s[indices]
+                K.set_value(s, s[indices].eval())

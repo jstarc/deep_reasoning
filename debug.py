@@ -6,6 +6,7 @@ import adverse_models
 discriminator = adverse_models.make_discriminator(glove, 150, compile=False)
 ad_model = adverse_models.make_full_adverse_model(discriminator, glove, 150)
 ad_model.load_weights('models/adverse_model/model.weights')
+discriminator.compile(loss='binary_crossentropy', optimizer='adam')
 import classify_models
 class_model = classify_models.attention_model(150, glove)
 class_model.load_weights('models/classify_model/model.weights')
