@@ -148,7 +148,7 @@ def create_o_test_model(train_model, examples, hidden_size, embed_size, glove, b
     func_premise = theano.function([train_model.inputs['premise_input'].get_input()],
                                     train_model.nodes['premise'].get_output(False), 
                                     allow_input_downcast=True)
-    func_noise = theano.function([train_model.inputs['noise_input'].get_input(),
+    func_noise = theano.function([train_model.nodes['noise_embeddings_pre'].get_output(False),
                                   train_model.inputs['class_input'].get_input()],
                                   train_model.nodes['creative'].get_output(False),
                                   allow_input_downcast=True)                            

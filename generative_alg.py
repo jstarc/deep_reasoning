@@ -67,7 +67,7 @@ def generative_predict(test_model, word_index, batch, embed_indices, class_indic
     return result
     
 
-def generative_predict_beam(test_model, word_index, example, embed_index, class_index, batch_size = 64, prem_len = 22, 
+def generative_predict_beam(test_model, word_index, example, noise_vec, class_index, batch_size = 64, prem_len = 22, 
                        hypo_len = 12):
     prem, _, _ = load_data.prepare_split_vec_dataset([example], word_index.index)
     padded_p = load_data.pad_sequences(prem, maxlen=prem_len, dim = -1)     
@@ -76,7 +76,8 @@ def generative_predict_beam(test_model, word_index, example, embed_index, class_
     core_model, premise_func, noise_func = test_model
     premise = premise_func(padded_p)
     
-    embed_vec = np.repeat(embed_index, batch_size)[:, None]
+    embed_vec = np.tile(noise_vec, (batch_size,1, 1))
+    print embed_vec.shape
     noise = noise_func(embed_vec, load_data.convert_to_one_hot(np.repeat(class_index, batch_size), 3))
    
     
