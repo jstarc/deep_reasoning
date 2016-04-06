@@ -40,21 +40,23 @@ def generative_train_generator(train, word_index, batch_size = 64, prem_len = 22
                     'output': np.ones((batch_size, hypo_len + 1, 1))}
                     
                     
-def generative_predict(test_model, word_index, batch, embed_indices, class_indices, batch_size = 64, prem_len = 22, 
+def generative_predict(test_model, word_index, batch, noise_vecs, class_indices, batch_size = 64, prem_len = 22, 
                        hypo_len = 12):
-    prem, _, _ = load_data.prepare_split_vec_dataset(batch, word_index)
+    prem, _, _ = load_data.prepare_split_vec_dataset(batch, word_index.index)
     padded_p = load_data.pad_sequences(prem, maxlen=prem_len, dim = -1)
     
     core_model, premise_func, noise_func = test_model
     premise = premise_func(padded_p)
     
-    noise = noise_func(embed_indices, load_data.convert_to_one_hot(class_indices, 3))
+    noise = noise_func(noise_vecs, load_data.convert_to_one_hot(class_indices, 3))
     
     core_model.reset_states()
     core_model.nodes['attention'].set_state(noise)
 
     word_input = np.zeros((batch_size, 1))
     result = []
+    probs = None
+    words = None
     for i in range(hypo_len):
         data = {'premise' :premise,
                 'creative': noise,
@@ -63,8 +65,14 @@ def generative_predict(test_model, word_index, batch, embed_indices, class_indic
         preds = core_model.predict_on_batch(data)['output']
         result.append(preds)
         word_input = np.argmax(preds, axis=2)
-    result = np.transpose(np.array(result)[:,:,-1,:], (1,0,2))
-    return result
+        curr_probs = np.max(preds, axis=2)[:,0]
+        if probs is None:
+            probs = curr_probs
+            words = np.array(word_input)
+        else:
+            probs *= curr_probs
+            words = np.concatenate([words, word_input], axis = -1)
+    return words, probs
     
 
 def generative_predict_beam(test_model, word_index, example, noise_vec, class_index, batch_size = 64, prem_len = 22, 
@@ -77,7 +85,6 @@ def generative_predict_beam(test_model, word_index, example, noise_vec, class_in
     premise = premise_func(padded_p)
     
     embed_vec = np.tile(noise_vec, (batch_size,1, 1))
-    print embed_vec.shape
     noise = noise_func(embed_vec, load_data.convert_to_one_hot(np.repeat(class_index, batch_size), 3))
    
     

@@ -1,6 +1,6 @@
 import numpy as np
 import load_data
-from generative_alg import generative_predict
+from generative_alg import generative_predict, generative_predict_beam
 from adverse_alg import make_train_batch
 
 def adversarial_generator(train, gen_model, discriminator, noise_embed_len, word_index, batch_size = 64, 
@@ -13,15 +13,17 @@ def adversarial_generator(train, gen_model, discriminator, noise_embed_len, word
                  continue
 
              orig_batch = [train[k] for k in train_index]
-             noise_input = np.random.random_integers(0, noise_embed_len -1, (len(orig_batch), 1))
+             #noise_input = np.random.random_integers(0, noise_embed_len -1, (len(orig_batch), 1))
+             noise_input = np.random.normal(scale=0.11, size=50)
              class_indices = np.random.random_integers(0, 2, len(orig_batch))
 
-             probs = generative_predict(gen_model, word_index.index, orig_batch, noise_input, class_indices,
+             hypo_batch, probs = generative_predict_beam(gen_model, word_index, orig_batch[0],
+                                            noise_input, class_indices[0],
                                             batch_size, prem_len, hypo_len)
-             hypo_batch = np.argmax(probs, axis = 2)
+             #hypo_batch = np.argmax(probs, axis = 2)
              ad_preds = discriminator.predict_on_batch(hypo_batch)[0].flatten()
              
-             X_prem, _, _ = load_data.prepare_split_vec_dataset(orig_batch, word_index.index)
+             X_prem, _, _ = load_data.prepare_split_vec_dataset([orig_batch[0]] * 64, word_index.index)
              premise_batch = load_data.pad_sequences(X_prem, maxlen = prem_len, dim = -1, padding = 'pre')             
             
              yield {'premise' : premise_batch, 'hypo' : hypo_batch, 'label': class_indices, 'sanity': ad_preds}
