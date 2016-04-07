@@ -77,17 +77,16 @@ def generative_predict(test_model, word_index, batch, noise_vecs, class_indices,
 
 def generative_predict_beam(test_model, word_index, examples, noise_batch, class_indices, return_best = True, 
                             batch_size = 64, prem_len = 22, hypo_len = 12):
-
     beam_size = batch_size / len(examples)
     prem, _, _ = load_data.prepare_split_vec_dataset(examples, word_index.index)
     padded_p = load_data.pad_sequences(prem, maxlen=prem_len, dim = -1)     
     padded_p = np.repeat(padded_p, beam_size, axis = 0)    
     core_model, premise_func, noise_func = test_model
     premise = premise_func(padded_p)
-    
+
     embed_vec = np.repeat(noise_batch, beam_size, axis = 0)
     noise = noise_func(embed_vec, load_data.convert_to_one_hot(np.repeat(class_indices, beam_size, axis = 0), 3))
-  
+
     core_model.reset_states()
     core_model.nodes['attention'].set_state(noise)
 
@@ -103,17 +102,17 @@ def generative_predict_beam(test_model, word_index, examples, noise_batch, class
         split_preds = np.array(np.split(preds, len(examples)))
         if probs is None:
             word_input = np.argpartition(-split_preds[:, 0, 0], beam_size)[:,:beam_size]
-            probs = split_preds[:,0,0][np.arange(len(examples))[:, np.newaxis],[word_input]].flatten()
-            word_input= word_input.flatten()[:,None]
+            probs = split_preds[:,0,0][np.arange(len(examples))[:, np.newaxis],[word_input]].ravel()
+            word_input= word_input.ravel()[:,None]
             words = np.array(word_input)
         else:
-            compound_probs =  (preds[:,-1,:] * probs[:, None]).flatten()
+            compound_probs =  (preds[:,-1,:] * probs[:, None]).ravel()
             split_cprobs = np.array(np.split(compound_probs, len(examples)))
             max_indices = np.argpartition(-split_cprobs, beam_size)[:,:beam_size]
-            probs = split_cprobs[np.arange(len(examples))[:, np.newaxis],[max_indices]].flatten()
-            word_input = (max_indices % preds.shape[-1]).flatten()[:,None]
+            probs = split_cprobs[np.arange(len(examples))[:, np.newaxis],[max_indices]].ravel()
+            word_input = (max_indices % preds.shape[-1]).ravel()[:,None]
             state_indices = (max_indices / preds.shape[-1]) + np.arange(0, batch_size, beam_size)[:, None]
-            state_indices = state_indices.flatten()
+            state_indices = state_indices.ravel()
             shuffle_states(core_model, state_indices)
             words = np.concatenate([words[state_indices], word_input], axis = -1) 
     if return_best:
@@ -126,4 +125,4 @@ def shuffle_states(graph_model, indices):
     for l in graph_model.nodes.values():
         if getattr(l, 'stateful', False): 
             for s in l.states:
-                K.set_value(s, s[indices].eval())
+                K.set_value(s, s.get_value()[indices])
