@@ -2,6 +2,7 @@ import numpy as np
 import load_data
 from generative_alg import generative_predict, generative_predict_beam
 from adverse_alg import make_train_batch
+from keras.utils.generic_utils import Progbar
 
 def adversarial_generator(train, gen_model, discriminator, noise_embed_len, word_index, beam_size = 4, batch_size = 64, 
                           prem_len = 22, hypo_len = 12):
@@ -47,27 +48,31 @@ def ca_generator(train, gen_model, discriminator, class_model, noise_embed_len, 
             yield batch
             batch = {}
 
-def generate_dataset(train, gen_model, discriminator, class_model, noise_embed_len, word_index, target_size ,beam_size = 4,
-                     batch_size = 64, class_batch_size = 128, prem_len = 22, hypo_len = 12):
+def generate_dataset(train, gen_model, discriminator, class_model, noise_embed_len, word_index, target_size, top_k = 1,
+                     beam_size = 4, batch_size = 64, class_batch_size = 128, prem_len = 22, hypo_len = 12):
 
+    iters = target_size / (3 * top_k)
     ca_gen = ca_generator(train, gen_model, discriminator, class_model, noise_embed_len, word_index, beam_size,
                           batch_size, class_batch_size, prem_len, hypo_len)
     dataset = []
     max_scores = []
-    for i in range(target_size / 3):
+    p = Progbar(iters * 3 * top_k)
+    for i in range(iters):
         ca_batch = next(ca_gen)
-        scores = ca_batch['sanity'] * ca_batch['class_pred'][np.arange(class_batch_size),ca_batch['label']]
+        scores = ca_batch['sanity'] #* ca_batch['class_pred'][np.arange(class_batch_size),ca_batch['label']]
         for l in range(3):
             ind = np.where(ca_batch['label'] == l)[0]
-            max_ind = ind[np.argmax(scores[ind])]
-            max_scores.append((ca_batch['sanity'][max_ind], ca_batch['class_pred'][max_ind][l], scores[max_ind]))
-            premise = word_index.get_seq(ca_batch['premise'][max_ind].astype('int'))
-            hypo = word_index.get_seq(ca_batch['hypo'][max_ind].astype('int'))
-            clss = load_data.LABEL_LIST[ca_batch['label'][max_ind]]
-            example = (premise, hypo, clss)
-            dataset.append(example)
-        print i, '\r' ,  
-    return dataset#, max_scores
+            top_relative_indices = np.argpartition(-scores[ind], min(top_k, len(ind) -1))[:top_k]
+            top_indices = ind[top_relative_indices]            
+            for t in top_indices:
+                premise = word_index.get_seq(ca_batch['premise'][t].astype('int'))
+                hypo = word_index.get_seq(ca_batch['hypo'][t].astype('int'))
+                clss = load_data.LABEL_LIST[ca_batch['label'][t]]
+                example = (premise, hypo, clss)
+                dataset.append(example)
+                max_scores.append((ca_batch['sanity'][t], ca_batch['class_pred'][t][l], scores[t]))
+                p.add(1)
+    return dataset, max_scores
     
         
                  
