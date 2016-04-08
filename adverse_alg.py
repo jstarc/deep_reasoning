@@ -2,7 +2,7 @@ import numpy as np
 import os 
 
 import load_data
-from generative_alg import generative_predict
+from generative_alg import generative_predict_beam
 from keras.callbacks import ModelCheckpoint, EarlyStopping
 
 
@@ -35,7 +35,9 @@ def prepare_dev_data(dev_gen, batches):
        result[k] = np.concatenate(v)
     return result
     
-def adverse_generator(train, gen_model, noise_embed_len, word_index, batch_size = 64, prem_len = 22, hypo_len = 12):
+def adverse_generator(train, gen_model, noise_embed_len, word_index, cache_prob = 0.0, 
+                      batch_size = 64, prem_len = 22, hypo_len = 12):
+    cache =  []    
     while True:
          mb = load_data.get_minibatches_idx(len(train), batch_size, shuffle=True)
         
@@ -44,15 +46,22 @@ def adverse_generator(train, gen_model, noise_embed_len, word_index, batch_size 
                  continue
              
              orig_batch = [train[k] for k in train_index]
-             gen_batch = make_gen_batch(orig_batch, gen_model, noise_embed_len, word_index, batch_size, prem_len, hypo_len)
+             if np.random.random() > cache_prob or len(cache) < 100:
+                 gen_batch = make_gen_batch(orig_batch, gen_model, noise_embed_len, word_index, batch_size, 
+                                            prem_len, hypo_len)
+                 cache.append(gen_batch)
+             else:
+                 gen_batch = cache[np.random.random_integers(0, len(cache) - 1)]
+                 
              train_batch = make_train_batch(orig_batch, word_index, hypo_len)
              yield {'train_hypo' : train_batch, 'gen_hypo': gen_batch, 'output2': np.zeros((batch_size))}
         
 def make_gen_batch(orig_batch, gen_model, noise_embed_len, word_index, batch_size = 64, prem_len = 22, hypo_len = 12):
+######TODO   
     noise_input = np.random.random_integers(0, noise_embed_len -1, (len(orig_batch), 1))
     class_indices = np.random.random_integers(0, 2, len(orig_batch))
     
-    probs = generative_predict(gen_model, word_index.index, orig_batch, noise_input, class_indices, batch_size,
+    probs = generative_predict_beam(gen_model, word_index, orig_batch, noise_input, class_indices, True, batch_size,
                                prem_len, hypo_len)
     return np.argmax(probs, axis = 2)
     
