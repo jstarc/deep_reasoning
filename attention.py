@@ -23,7 +23,7 @@ class LstmAttentionLayer(Recurrent):
 
     def __init__(self, output_dim, init='glorot_uniform', inner_init='orthogonal',
                  forget_bias_init='one', activation='tanh',
-                 inner_activation='hard_sigmoid', batch_size = 64, feed_state = False, **kwargs):
+                 inner_activation='sigmoid', batch_size = 64, feed_state = False, **kwargs):
 
         self.output_dim = output_dim
         self.init = initializations.get(init)
