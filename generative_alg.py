@@ -48,7 +48,7 @@ def generative_predict(test_model, word_index, batch, noise_vecs, class_indices,
     core_model, premise_func, noise_func = test_model
     premise = premise_func(padded_p)
     
-    noise = noise_func(noise_vecs, load_data.convert_to_one_hot(class_indices, 3))
+    noise = noise_func(noise_vecs)
     
     core_model.reset_states()
     core_model.nodes['attention'].set_state(noise)
@@ -60,6 +60,7 @@ def generative_predict(test_model, word_index, batch, noise_vecs, class_indices,
     for i in range(hypo_len):
         data = {'premise' :premise,
                 'creative': noise,
+                'class_input': load_data.convert_to_one_hot(class_indices, 3),
                 'hypo_input': word_input,
                 'train_input': np.zeros((batch_size,1))}
         preds = core_model.predict_on_batch(data)['output']
@@ -85,7 +86,7 @@ def generative_predict_beam(test_model, word_index, examples, noise_batch, class
     premise = premise_func(padded_p)
 
     embed_vec = np.repeat(noise_batch, beam_size, axis = 0)
-    noise = noise_func(embed_vec, load_data.convert_to_one_hot(np.repeat(class_indices, beam_size, axis = 0), 3))
+    noise = noise_func(embed_vec)
 
     core_model.reset_states()
     core_model.nodes['attention'].set_state(noise)
@@ -96,6 +97,7 @@ def generative_predict_beam(test_model, word_index, examples, noise_batch, class
     for i in range(hypo_len):
         data = {'premise' :premise,
                 'creative': noise,
+                'class_input':load_data.convert_to_one_hot(np.repeat(class_indices, beam_size, axis = 0), 3),
                 'hypo_input': word_input,
                 'train_input': np.zeros((batch_size,1))}
         preds = core_model.predict_on_batch(data)['output']
