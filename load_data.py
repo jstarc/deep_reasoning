@@ -132,7 +132,8 @@ class WordIndex(object):
 
 def load_word_vec(token, glove):
     if token not in glove:
-	glove[token] = np.random.uniform(-1, 1, len(glove.values()[0]))    
+        np.random.seed(hash(token))
+        glove[token] = np.random.normal(scale=0.65, size = len(glove.values()[0]))    
     return glove[token]
 
 
@@ -315,83 +316,21 @@ def prepare_word2vec(model, snli_path):
             glove[token] = model[token]
     return glove
         
-def transform_dataset(dataset, class_str = None, max_prem_len = sys.maxint, max_hypo_len = sys.maxint):
-    uniq = set()
-    result = []
-    for ex in dataset:
-        prem_str = " ".join(ex[0])
-        if class_str == None:
-            prem_str += ex[2]
-        if  (class_str == None or ex[2] == class_str) and prem_str not in uniq and len(ex[0]) <= max_prem_len and len(ex[1]) <= max_hypo_len:
-            result.append(ex)
-            uniq.add(prem_str)
-    return result
-
-
-
+def transform_dataset(dataset, max_prem_len = sys.maxint, max_hypo_len = sys.maxint):
+    [ex for ex in dataset if len(ex[0]) <= max_prem_len and len(ex[1]) <= max_hypo_len]
+ 
 
 if __name__ == "__main__":
     train, dev, test = load_all_snli_datasets('data/snli_1.0/')
     glove = import_glove('data/snli_vectors.txt')
     
-    train = transform_dataset(train, None, 22, 12)
-    dev = transform_dataset(dev, None, 22, 12)
+    train = transform_dataset(train, 25, 15)
+    dev = transform_dataset(dev, 25, 15)
+    test = transform_dataset(dev, 25, 15)
     
-    for ex in train+dev:
+    for ex in train+dev+test:
         load_word_vecs(ex[0] + ex[1], glove)
-    #load_word_vec('EOS', glove)
-    #glove['EOS'] = np.zeros(50)
-    glove['EOS'] = np.array([
-       -0.582148954417317066045711726474,
-       -0.244393248315539324266865151003,
-        0.741219472825796810155907223816,
-       -0.733815277185625447486927441787,
-        0.421104501955726684414571536763,
-       -0.093848840526853827270770125324,
-        0.26157600309975381769334035198 ,
-       -0.83817126474407599445726191334 ,
-        0.493374906303213345282188129204,
-        0.885874879587261965241395955672,
-        0.353202276464136488698386528995,
-        0.857687901851755141180433383852,
-       -0.30025513383325108662802449544 ,
-        0.988116478739419656918130385748,
-        0.622989339050785462248427393206,
-       -0.601093506285039547165638396109,
-        0.411576063562242744353625312215,
-        0.606914919711505795874018076574,
-        0.688334835361322117108784368611,
-        0.520915135130978201871698729519,
-        0.075241156713982126902351410536,
-        0.665248424214184730374199716607,
-        0.869791811730013852965726073307,
-       -0.406030187847893131447563064285,
-       -0.30600123632744780088899005932 ,
-        0.009379291172922687991331258672,
-       -0.668766958512569287265137063514,
-        0.10997596322510072575084905111 ,
-        0.293268911503105078608655276184,
-        0.694830159357072929537935124245,
-       -0.681338967971398368206337181618,
-        0.698407201455419235358590412943,
-        0.968944355797665135554552762187,
-        0.691334715800610455360697415017,
-       -0.651586373448130418140067376953,
-        0.83215168062239741608721033117 ,
-        0.826698989256635652367322109058,
-        0.616670343805001408554744557478,
-       -0.203716669102333769458823553578,
-       -0.247300384492390668000894038414,
-       -0.686098349518860617379800714843,
-       -0.415813890692955601124936038104,
-        0.72246883937489014826383026957 ,
-        0.470699690746025911636252203607,
-       -0.314883648927954729046518878022,
-        0.591072134954823136254731252848,
-        0.008658892001761842038831673563,
-        0.999078362021354804411998884461,
-        0.164330919435855093979625962675, 
-       -0.066673396367238124682330635551])
+    load_word_vec('EOS', glove)
     
     wi = WordIndex(glove)
         
