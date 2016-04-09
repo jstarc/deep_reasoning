@@ -132,7 +132,7 @@ class WordIndex(object):
 
 def load_word_vec(token, glove):
     if token not in glove:
-        np.random.seed(hash(token))
+        np.random.seed(hash(token) % 2**32)
         glove[token] = np.random.normal(scale=0.65, size = len(glove.values()[0]))    
     return glove[token]
 
@@ -317,7 +317,7 @@ def prepare_word2vec(model, snli_path):
     return glove
         
 def transform_dataset(dataset, max_prem_len = sys.maxint, max_hypo_len = sys.maxint):
-    [ex for ex in dataset if len(ex[0]) <= max_prem_len and len(ex[1]) <= max_hypo_len]
+    return [ex for ex in dataset if len(ex[0]) <= max_prem_len and len(ex[1]) <= max_hypo_len]
  
 
 if __name__ == "__main__":
@@ -326,7 +326,7 @@ if __name__ == "__main__":
     
     train = transform_dataset(train, 25, 15)
     dev = transform_dataset(dev, 25, 15)
-    test = transform_dataset(dev, 25, 15)
+    test = transform_dataset(test, 25, 15)
     
     for ex in train+dev+test:
         load_word_vecs(ex[0] + ex[1], glove)

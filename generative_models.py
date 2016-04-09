@@ -111,7 +111,7 @@ def create_o_train_model(examples, hidden_size, embed_size, glove, batch_size = 
     
 
     
-def create_o_test_model(train_model, examples, hidden_size, embed_size, glove, batch_size = 64, prem_len = 22):
+def create_o_test_model(train_model, examples, hidden_size, embed_size, glove, batch_size, prem_len):
     
     
     graph = Graph()
@@ -158,13 +158,13 @@ def create_o_test_model(train_model, examples, hidden_size, embed_size, glove, b
     return graph, func_premise, func_noise
     
     
-def create_o2_train_model(examples, hidden_size, embed_size, glove, batch_size = 64, prem_len = 22, hypo_len = 13):
+def create_o2_train_model(examples, hidden_size, embed_size, glove, batch_size, prem_len, hypo_len):
    
     premise_layer = LSTM(output_dim=hidden_size, return_sequences=True)
    
     hypo_layer = LSTM(output_dim= hidden_size - 3, return_sequences=True)
     attention = LstmAttentionLayer(hidden_size, return_sequences=True, feed_state = True)
-    noise_layer = Embedding(examples, embed_size, input_length = 1)
+    noise_layer = Embedding(examples, hidden_size, input_length = 1)
     
 
     graph = Graph()
@@ -177,19 +177,20 @@ def create_o2_train_model(examples, hidden_size, embed_size, glove, batch_size =
     graph.add_node(Flatten(), name='creative', input='noise_embeddings_pre')
     
     graph.add_input(name='class_input', batch_input_shape=(batch_size, 3))
-    graph.add_node(RepeatVector(hypo_len), name='class_td', input='class_input')
+    graph.add_node(RepeatVector(hypo_len + 1), name='class_td', input='class_input')
    
-    graph.add_input(name='hypo_input', batch_input_shape=(batch_size, hypo_len), dtype = 'int32')
-    graph.add_node(make_fixed_embeddings(glove, hypo_len), name = 'hypo_word_vec', input='hypo_input')
+    graph.add_input(name='hypo_input', batch_input_shape=(batch_size, hypo_len + 1), dtype = 'int32')
+    graph.add_node(make_fixed_embeddings(glove, hypo_len + 1), name = 'hypo_word_vec', input='hypo_input')
     graph.add_node(hypo_layer, name = 'hypo', input='hypo_word_vec')
     
-    graph.add_node(Layer(), inputs=['hypo','class_td'],name ='hypo_merge', merge_mode = 'concat')
+    graph.add_node(Layer(), inputs=['hypo','class_td'],name ='hypo_merge', 
+                   merge_mode = 'concat', concat_axis = 2)
     
     graph.add_node(attention, name='attention', inputs=['premise', 'hypo_merge', 'creative'], 
                    merge_mode='join')
     
-    graph.add_input(name='train_input', batch_input_shape=(batch_size, hypo_len), dtype='int32')
-    graph.add_node(HierarchicalSoftmax(len(glove), input_dim = hidden_size, input_length = hypo_len), 
+    graph.add_input(name='train_input', batch_input_shape=(batch_size, hypo_len + 1), dtype='int32')
+    graph.add_node(HierarchicalSoftmax(len(glove), input_dim = hidden_size, input_length = hypo_len + 1), 
                    name = 'softmax', inputs=['attention','train_input'], 
                    merge_mode = 'join')
     graph.add_output(name='output', input='softmax')
@@ -198,8 +199,8 @@ def create_o2_train_model(examples, hidden_size, embed_size, glove, batch_size =
     return graph
     
     
-def create_o2_test_model(train_model, examples, hidden_size, embed_size, glove, batch_size = 64, prem_len = 22):
-    
+def create_o2_test_model(train_model, examples, hidden_size, embed_size, glove, batch_size,
+                         prem_len):
     
     graph = Graph()
     

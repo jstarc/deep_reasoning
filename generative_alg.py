@@ -6,18 +6,18 @@ from keras.backend import theano_backend as K
 from keras.callbacks import ModelCheckpoint
 
 
-def train_generative_graph(train, wi, model, model_dir =  'models/curr_model', nb_epochs = 20, batch_size = 64):
+def train_generative_graph(train, wi, model, model_dir, nb_epochs, batch_size, prem_len, hypo_len):
     
     if not os.path.exists(model_dir):
          os.makedirs(model_dir)
-    g_train = generative_train_generator(train, wi, batch_size)
+    g_train = generative_train_generator(train, wi, batch_size, prem_len, hypo_len)
     saver = ModelCheckpoint(model_dir + '/weights.{epoch:02d}-{loss:.2f}.hdf5', monitor = 'loss')
     
-    return model.fit_generator(g_train, samples_per_epoch = len(train), nb_epoch = nb_epochs,  
+    return model.fit_generator(g_train, samples_per_epoch = 150000, nb_epoch = nb_epochs,  
                                callbacks = [saver])         
             
 
-def generative_train_generator(train, word_index, batch_size = 64, prem_len = 22, hypo_len = 12):
+def generative_train_generator(train, word_index, batch_size, prem_len, hypo_len):
     while True:
          mb = load_data.get_minibatches_idx(len(train), batch_size, shuffle=True)
         
@@ -47,7 +47,7 @@ def generative_predict(test_model, word_index, batch, noise_vecs, class_indices,
     
     core_model, premise_func, noise_func = test_model
     premise = premise_func(padded_p)
-    
+     
     noise = noise_func(noise_vecs)
     
     core_model.reset_states()

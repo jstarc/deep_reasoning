@@ -6,16 +6,16 @@ from keras import backend as K
 from common import make_fixed_embeddings
 
 
-def make_discriminator(glove, embed_size = 50, compile=False, hypo_len = 12):
+def make_discriminator(glove, hidden_size, hypo_len, compile=True):
     discriminator = Sequential()
     discriminator.add(make_fixed_embeddings(glove, hypo_len))
-    discriminator.add(LSTM(embed_size))
+    discriminator.add(LSTM(hidden_size))
     discriminator.add(Dense(1, activation='sigmoid'))
     if compile:
         discriminator.compile(loss='binary_crossentropy', optimizer='adam')
     return discriminator
 
-def make_full_adverse_model(discriminator, glove, embed_size = 100, batch_size = 64, hypo_len = 12):
+def make_full_adverse_model(discriminator, hypo_len):
     
     graph = Graph()
     graph.add_input(name='train_hypo', input_shape=(hypo_len,), dtype ='int')
