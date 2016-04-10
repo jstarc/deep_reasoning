@@ -4,16 +4,16 @@ import load_data
 from keras.callbacks import ModelCheckpoint, EarlyStopping
 
 
-def train_classify_graph(train, dev, wi, model, model_dir =  'models/curr_model', nb_epochs = 20, batch_size = 128):
+def train_classify_graph(train, dev, wi, model, model_dir, nb_epochs, batch_size):
     
     if not os.path.exists(model_dir):
          os.makedirs(model_dir)
     g_train = graph_generator(train, batch_size, wi)
     g_dev = graph_generator(dev, batch_size, wi)   
-    es = EarlyStopping(patience = 5)
+    es = EarlyStopping(patience = 8)
     saver = ModelCheckpoint(model_dir + '/model.weights', monitor = 'val_loss')
     
-    return model.fit_generator(g_train, samples_per_epoch = batch_size * 100, nb_epoch = nb_epochs, 
+    return model.fit_generator(g_train, samples_per_epoch = batch_size * 1000, nb_epoch = nb_epochs, 
                                validation_data = g_dev, nb_val_samples = len(dev), show_accuracy=True, 
                                callbacks = [saver, es])
         
