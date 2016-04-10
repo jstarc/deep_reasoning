@@ -318,6 +318,22 @@ def prepare_word2vec(model, snli_path):
         
 def transform_dataset(dataset, max_prem_len = sys.maxint, max_hypo_len = sys.maxint):
     return [ex for ex in dataset if len(ex[0]) <= max_prem_len and len(ex[1]) <= max_hypo_len]
+
+def serialize_dataset(dataset, filename):
+    with open(filename, 'w') as file:
+        for ex in dataset:
+           file.write(" ".join(ex[0]) + '\t' + " ".join(ex[1]) + '\t' + ex[2] + '\n')
+
+def deserialize_dataset(filename):
+    dataset = []
+    with open(filename, 'r') as file:
+        for line in file:
+            line = line[:-1]
+            split = line.split('\t')
+            example = (split[0].split(), split[1].split(), split[2])
+            dataset.append(example)
+    return dataset
+ 
  
 
 if __name__ == "__main__":
