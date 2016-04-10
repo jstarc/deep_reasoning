@@ -13,7 +13,7 @@ def train_generative_graph(train, wi, model, model_dir, nb_epochs, batch_size, p
     g_train = generative_train_generator(train, wi, batch_size, prem_len, hypo_len)
     saver = ModelCheckpoint(model_dir + '/weights.{epoch:02d}-{loss:.2f}.hdf5', monitor = 'loss')
     
-    return model.fit_generator(g_train, samples_per_epoch = 150000, nb_epoch = nb_epochs,  
+    return model.fit_generator(g_train, samples_per_epoch = 300000, nb_epoch = nb_epochs,  
                                callbacks = [saver])         
             
 
@@ -76,13 +76,16 @@ def generative_predict(test_model, word_index, batch, noise_vecs, class_indices,
     return words, probs
     
 
-def generative_predict_beam(test_model, word_index, examples, noise_batch, class_indices, return_best = True, 
-                            batch_size = 64, prem_len = 22, hypo_len = 12):
+def generative_predict_beam(test_model, word_index, examples, noise_batch, class_indices, 
+                            return_best, hypo_len):
+    
+    core_model, premise_func, noise_func = test_model
+    batch_size, prem_len, _ = core_model.inputs['premise'].input_shape
+     
     beam_size = batch_size / len(examples)
     prem, _, _ = load_data.prepare_split_vec_dataset(examples, word_index.index)
     padded_p = load_data.pad_sequences(prem, maxlen=prem_len, dim = -1)     
     padded_p = np.repeat(padded_p, beam_size, axis = 0)    
-    core_model, premise_func, noise_func = test_model
     premise = premise_func(padded_p)
 
     embed_vec = np.repeat(noise_batch, beam_size, axis = 0)

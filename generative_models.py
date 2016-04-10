@@ -199,9 +199,10 @@ def create_o2_train_model(examples, hidden_size, embed_size, glove, batch_size, 
     return graph
     
     
-def create_o2_test_model(train_model, examples, hidden_size, embed_size, glove, batch_size,
-                         prem_len):
+def create_o2_test_model(train_model, glove):
     
+    batch_size, prem_len, hidden_size = train_model.nodes['premise'].output_shape
+    embed_size = train_model.nodes['prem_word_vec'].output_shape[2]
     graph = Graph()
     
     hypo_layer = LSTM(output_dim= hidden_size - 3, batch_input_shape=(batch_size, 1, embed_size), 
@@ -219,15 +220,16 @@ def create_o2_test_model(train_model, examples, hidden_size, embed_size, glove, 
     graph.add_node(RepeatVector(1), name='class_td', input='class_input')
     graph.add_node(Layer(), inputs=['hypo','class_td'], name ='hypo_merge', merge_mode = 'concat')
      
-    attention = LstmAttentionLayer(hidden_size, return_sequences=True, stateful = True, trainable = False, 
-                                   feed_state = False)
+    attention = LstmAttentionLayer(hidden_size, return_sequences=True, stateful = True, 
+                                   trainable = False, feed_state = False)
     
     
     graph.add_node(attention, name='attention', inputs=['premise', 'hypo_merge', 'creative'], merge_mode='join')
    
     
     graph.add_input(name='train_input', batch_input_shape=(batch_size, 1), dtype='int32')
-    hs = HierarchicalSoftmax(len(glove), input_dim = hidden_size, input_length = 1, trainable = False)
+    hs = HierarchicalSoftmax(len(glove), input_dim = hidden_size, input_length = 1, 
+                             trainable = False)
     
     graph.add_node(hs, 
                    name = 'softmax', inputs=['attention','train_input'], 
