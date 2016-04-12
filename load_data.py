@@ -122,12 +122,12 @@ class WordIndex(object):
         self.index = {key:value for key,value in zip(self.keys, range(len(self.keys)))}
     
     def print_seq(self, sequence):
-        words = self.keys[sequence]
+        words = self.keys[sequence.astype('int')]
         words = [w for w in words if w != 'EOS']
         return " ".join(words)
 
     def get_seq(self, sequence):
-        words = self.keys[sequence]
+        words = self.keys[sequence.astype('int')]
         return [w for w in words if w != 'EOS']
 
 def load_word_vec(token, glove):
