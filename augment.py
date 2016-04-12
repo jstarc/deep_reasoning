@@ -31,25 +31,17 @@ def adversarial_generator(train, gen_model, discriminator, word_index, beam_size
                     'sanity': ad_preds}
 
 
-def ca_generator(train, gen_model, discriminator, class_model, word_index, beam_size, 
-                 batch_size, hypo_len):
+def ca_generator(train, gen_model, discriminator, class_model, word_index, beam_size,
+                    hypo_len):
     ad_gen = adversarial_generator(train, gen_model, discriminator, 
                                    word_index, beam_size, hypo_len)
     batch = {}
     class_batch_size = class_model.nodes['attention'].output_shape[0] ## check this
     while True:
         ad_batch = next(ad_gen)
-        for k, v in ad_batch.iteritems():
-            batch.setdefault(k,[]).append(v)
-        temp_batches = batch[batch.keys()[0]]
-        elements = len(temp_batches) * len(temp_batches[0])
-        if elements == class_batch_size:
-            for k, v in batch.iteritems():
-                batch[k] = np.concatenate(v)
-            class_batch = {'premise_input': batch['premise'], 'hypo_input': batch['hypo']}
-            batch['class_pred'] = class_model.predict_on_batch(class_batch)['output']  
-            yield batch
-            batch = {}
+        class_batch = {'premise_input': ad_batch['premise'], 'hypo_input': ad_batch['hypo']}
+        ad_batch['class_pred'] = class_model.predict_on_batch(class_batch)['output']  
+        yield ad_batch
 
 def generate_dataset(train, gen_model, discriminator, word_index, target_size,
                        beam_size, hypo_len, top_k = 1):
@@ -76,7 +68,24 @@ def generate_dataset(train, gen_model, discriminator, word_index, target_size,
                 max_scores.append(scores[t])
                 p.add(1)
     return dataset, max_scores
-    
+
+def pre_generate(train, gen_model, discriminator, class_model, word_index, beam_size,
+                 hypo_len, target_size):
+
+    p = Progbar(target_size)
+    ca_gen = ca_generator(train, gen_model, discriminator, class_model, word_index, 
+                          beam_size, hypo_len)
+    result_dict = {}
+    while p.seen_so_far < target_size:
+        batch = next(ca_gen)
+        for k, v in batch.iteritems():
+            result_dict.setdefault(k,[]).append(v)
+        p.add(len(batch['hypo']))
+    for k, v in result_dict.iteritems():
+        result_dict[k] = np.concatenate(v)
+    return result_dict        
+            
+
         
                  
 def print_ca_batch(ca_batch, wi, csv_file = None):
@@ -87,22 +96,22 @@ def print_ca_batch(ca_batch, wi, csv_file = None):
         import csv
         csvf =  open(csv_file, 'wb')
         writer = csv.writer(csvf)
-        writer.writerow(['premise', 'hypo', 'label', 'sanity'])#, 'class_prob'])
+        writer.writerow(['premise', 'hypo', 'label', 'sanity', 'class_prob'])
 
     for i in range(len(ca_batch[ca_batch.keys()[0]])):
         premise = wi.print_seq(ca_batch['premise'][i].astype('int'))
         hypo = wi.print_seq(ca_batch['hypo'][i].astype('int'))
         sanity = ca_batch['sanity'][i]
         label = load_data.LABEL_LIST[ca_batch['label'][i]]
-        #class_prob = ca_batch['class_pred'][i][ca_batch['label'][i]]
+        class_prob = ca_batch['class_pred'][i][ca_batch['label'][i]]
    
         if csv_file is None:
             print premise
             print hypo
-            print label, "sanity", sanity, 'cprob'#, class_prob
+            print label, "sanity", sanity, 'cprob', class_prob
             print
         else:
-            writer.writerow([premise, hypo, label, sanity])#, class_prob])                
+            writer.writerow([premise, hypo, label, sanity, class_prob])                
     
     if csv_file is not None:
         csvf.close()
