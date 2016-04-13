@@ -6,6 +6,8 @@ from keras.layers.recurrent import Recurrent
 from keras import activations, initializations
 from keras.backend import theano_backend as K
 
+from theano.ifelse import ifelse
+import theano.tensor as T
 import numpy as np
 import load_data
 
@@ -94,7 +96,7 @@ class LstmAttentionLayer(Recurrent):
 
     def set_state(self, noise):
         K.set_value(self.states[0], noise)
-
+        
 
 
     def get_output(self, train=False):
@@ -103,17 +105,19 @@ class LstmAttentionLayer(Recurrent):
         self.h_t = X[1]
         
         self.h_s = X[0]
-        if self.feed_state:        
-            self.h_init = X[2]
-
-        self.P_j = K.dot(self.h_s, self.W_s)
+        if not self.stateful or train :
+            self.P_j = K.dot(self.h_s, self.W_s)
+        else:
+            self.P_j = ifelse(T.eq(T.sum(self.states[1]), 0.0),
+                              K.dot(self.h_s, self.W_s), self.P_j)
+            
         
         if self.stateful and not train:
             initial_states = self.states
         else:
             initial_states = self.get_initial_states(self.h_s)
             if self.feed_state:
-                initial_states[0] =  self.h_init
+                initial_states[0] =  X[2]
 
         last_output, outputs, states = K.rnn(self.step, self.h_t, initial_states)
         
