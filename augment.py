@@ -1,3 +1,5 @@
+import os
+import glob
 import numpy as np
 import load_data
 from generative_alg import generative_predict, generative_predict_beam
@@ -83,11 +85,54 @@ def pre_generate(train, gen_model, discriminator, class_model, word_index, beam_
         p.add(len(batch['hypo']))
     for k, v in result_dict.iteritems():
         result_dict[k] = np.concatenate(v)
-    return result_dict        
-            
+    return result_dict
 
-        
-                 
+def pre_generate_save(train, gen_model, discriminator, class_model, word_index,
+                      beam_size, hypo_len, target_dir, file_size = 30000):
+    if not os.path.exists(target_dir):
+         os.makedirs(target_dir)
+    counter = 0
+    while True:
+        print 'Epoch', counter
+        batch = pre_generate(train, gen_model, discriminator, class_model,
+                                word_index, beam_size, hypo_len, file_size)
+        filename = target_dir + '/data' + str(counter) 
+        print_ca_batch(batch, word_index, filename)
+        counter += 1
+
+def deserialize_pregenerated(target_dir):
+    import csv
+    file_list = glob.glob(target_dir + '/*')
+    dataset = []
+    metrics = []
+    for f in file_list:
+        with open(f) as input:
+            reader = csv.reader(input)
+            header = next(reader)
+            for ex in reader:
+                dataset.append((ex[0].split(), ex[1].split(), ex[2]))
+                metrics.append([float(ex[3]), float(ex[4])])
+    return np.array(dataset), np.array(metrics)
+             
+def make_dataset(target_dir, train_len, dev_len):
+    ds, met = deserialize_pregenerated(target_dir)
+    label_len = (train_len + dev_len) / 3
+    dev_label_len = dev_len / 3
+    train = []
+    dev = []
+    for label in load_data.LABEL_LIST:
+        indices = []
+        for i in range(len(ds)):
+            if ds[i][2] == label:
+                indices.append(i)
+        indices = np.array(indices)
+        good_indices = indices[np.argsort(met[indices, 1])[-label_len:]]
+        np.random.shuffle(good_indices)
+        dev += list(ds[good_indices[:dev_label_len]])
+        train += list(ds[good_indices[dev_label_len:]])
+    return train, dev
+    
+    
 def print_ca_batch(ca_batch, wi, csv_file = None):
     
     writer = None
