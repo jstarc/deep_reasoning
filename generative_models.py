@@ -158,7 +158,7 @@ def create_o_test_model(train_model, examples, hidden_size, embed_size, glove, b
     return graph, func_premise, func_noise
     
     
-def create_o2_train_model(examples, hidden_size, embed_size, glove, batch_size, prem_len, hypo_len):
+def create_o2_train_model(examples, hidden_size, glove, batch_size, prem_len, hypo_len):
    
     premise_layer = LSTM(output_dim=hidden_size, return_sequences=True)
    
