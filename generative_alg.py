@@ -131,3 +131,13 @@ def shuffle_states(graph_model, indices):
         if getattr(l, 'stateful', False): 
             for s in l.states:
                 K.set_value(s, s.get_value()[indices])
+
+
+def make_gen_batch(orig_batch, gen_model, word_index, hypo_len):
+    hidden_size = gen_model[0].nodes['hypo_merge'].output_shape[2]
+    noise_input = np.random.normal(scale=0.11, size=(len(orig_batch), 1, hidden_size))
+    class_indices = np.random.random_integers(0, 2, len(orig_batch))
+
+    return generative_predict_beam(gen_model, word_index, orig_batch, noise_input,
+                             class_indices, True, hypo_len)
+    

@@ -15,8 +15,9 @@ def make_discriminator(glove, hidden_size, hypo_len, compile=True):
         discriminator.compile(loss='binary_crossentropy', optimizer='adam')
     return discriminator
 
-def make_full_adverse_model(discriminator, hypo_len):
+def make_full_adverse_model(discriminator):
     
+    hypo_len = discriminator.input_shape[1]
     graph = Graph()
     graph.add_input(name='train_hypo', input_shape=(hypo_len,), dtype ='int')
     graph.add_input(name='gen_hypo', input_shape=(hypo_len,), dtype ='int')

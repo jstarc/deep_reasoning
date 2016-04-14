@@ -41,7 +41,6 @@ class LstmAttentionLayer(Recurrent):
        self.previous = layer
        self.build()
 
-
     @property
     def output_shape(self):
         return (None, self.output_dim)
@@ -105,12 +104,7 @@ class LstmAttentionLayer(Recurrent):
         self.h_t = X[1]
         
         self.h_s = X[0]
-        if not self.stateful or train :
-            self.P_j = K.dot(self.h_s, self.W_s)
-        else:
-            self.P_j = ifelse(T.eq(T.sum(self.states[1]), 0.0),
-                              K.dot(self.h_s, self.W_s), self.P_j)
-            
+        self.P_j = K.dot(self.h_s, self.W_s)
         
         if self.stateful and not train:
             initial_states = self.states

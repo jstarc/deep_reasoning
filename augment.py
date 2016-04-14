@@ -6,10 +6,11 @@ from generative_alg import generative_predict, generative_predict_beam
 from adverse_alg import make_train_batch
 from keras.utils.generic_utils import Progbar
 
-def adversarial_generator(train, gen_model, discriminator, word_index, beam_size, hypo_len):
+def adversarial_generator(train, gen_model, discriminator, word_index, beam_size):
     batch_size, prem_len, _ = gen_model[0].inputs['premise'].input_shape
     examples = batch_size / beam_size
-    hidden_size = gen_model[0].nodes['hypo_merge'].output_shape[2] 
+    hidden_size = gen_model[0].nodes['hypo_merge'].output_shape[2]
+    hypo_len = discriminator.input_shape[1] 
     while True:
          mb = load_data.get_minibatches_idx(len(train), examples, shuffle=True)
 
@@ -30,15 +31,13 @@ def adversarial_generator(train, gen_model, discriminator, word_index, beam_size
                                                      padding = 'pre')             
             
              yield {'premise' : premise_batch, 'hypo' : hypo_batch, 'label': class_indices,
-                    'sanity': ad_preds}
+                    'sanity': ad_preds, 'gen_probs' : probs}
 
 
-def ca_generator(train, gen_model, discriminator, class_model, word_index, beam_size,
-                    hypo_len):
+def ca_generator(train, gen_model, discriminator, class_model, word_index, beam_size):
     ad_gen = adversarial_generator(train, gen_model, discriminator, 
-                                   word_index, beam_size, hypo_len)
+                                   word_index, beam_size)
     batch = {}
-    class_batch_size = class_model.nodes['attention'].output_shape[0] ## check this
     while True:
         ad_batch = next(ad_gen)
         class_batch = {'premise_input': ad_batch['premise'], 'hypo_input': ad_batch['hypo']}
@@ -46,11 +45,10 @@ def ca_generator(train, gen_model, discriminator, class_model, word_index, beam_
         yield ad_batch
 
 def generate_dataset(train, gen_model, discriminator, word_index, target_size,
-                       beam_size, hypo_len, top_k = 1):
+                       beam_size, top_k = 1):
 
     iters = target_size / (3 * top_k)
-    ad_gen = adversarial_generator(train, gen_model, discriminator, word_index, beam_size,
-                                   hypo_len)
+    ad_gen = adversarial_generator(train, gen_model, discriminator, word_index, beam_size)
     dataset = []
     max_scores = []
     p = Progbar(iters * 3 * top_k)
@@ -71,12 +69,12 @@ def generate_dataset(train, gen_model, discriminator, word_index, target_size,
                 p.add(1)
     return dataset, max_scores
 
-def pre_generate(train, gen_model, discriminator, class_model, word_index, beam_size,
-                 hypo_len, target_size):
+def pre_generate(train, gen_model, discriminator, class_model, word_index, 
+                 beam_size, target_size):
 
     p = Progbar(target_size)
     ca_gen = ca_generator(train, gen_model, discriminator, class_model, word_index, 
-                          beam_size, hypo_len)
+                          beam_size)
     result_dict = {}
     while p.seen_so_far < target_size:
         batch = next(ca_gen)
@@ -88,14 +86,14 @@ def pre_generate(train, gen_model, discriminator, class_model, word_index, beam_
     return result_dict
 
 def pre_generate_save(train, gen_model, discriminator, class_model, word_index,
-                      beam_size, hypo_len, target_dir, file_size = 30000):
+                      beam_size, target_dir, file_size = 30000):
     if not os.path.exists(target_dir):
          os.makedirs(target_dir)
     counter = 0
     while True:
         print 'Epoch', counter
         batch = pre_generate(train, gen_model, discriminator, class_model,
-                                word_index, beam_size, hypo_len, file_size)
+                                word_index, beam_size, file_size)
         filename = target_dir + '/data' + str(counter) 
         print_ca_batch(batch, word_index, filename)
         counter += 1
@@ -160,3 +158,28 @@ def print_ca_batch(ca_batch, wi, csv_file = None):
     
     if csv_file is not None:
         csvf.close()
+
+def validate_generative(train, gen_model, discriminator, class_model, word_index, 
+                        beam_size, target_size):
+    data = pre_generate(train, gen_model, discriminator, class_model, word_index, 
+                 beam_size, target_size)
+    data_len = len(data['sanity'])
+    cpred_mean =  np.mean(data['class_pred'][np.arange(data_len), data['label']])
+    san_mean = np.mean(data['sanity'])
+    gen_mean = np.mean(data['gen_probs'])
+    
+    return np.array([cpred_mean, san_mean, gen_mean])
+
+def test_gen_models(train, gen_train, gen_test, gen_folder, discriminator, class_model, word_index,
+                    beam_size, target_size):
+
+    model_list = glob.glob(gen_folder + '/*')
+    model_list.sort(key=os.path.getmtime)
+    for m in model_list:
+        gen_train.load_weights(m)
+        means = validate_generative(train, gen_test, discriminator, class_model, word_index,
+                        beam_size, target_size)
+
+        print m
+        print means
+

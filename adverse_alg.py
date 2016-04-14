@@ -2,7 +2,8 @@ import numpy as np
 import os 
 
 import load_data
-from generative_alg import generative_predict_beam
+from generative_alg import generative_predict_beam, make_gen_batch
+
 from keras.callbacks import ModelCheckpoint, EarlyStopping
 
 
@@ -46,7 +47,7 @@ def adverse_generator(train, gen_model, word_index, cache_prob, batch_size, hypo
              
              orig_batch = [train[k] for k in train_index]
              if np.random.random() > cache_prob or len(cache) < 100:
-                 gen_batch = make_gen_batch(orig_batch, gen_model, word_index, hypo_len)
+                 gen_batch, _ = make_gen_batch(orig_batch, gen_model, word_index, hypo_len)
                  cache.append(gen_batch)
              else:
                  gen_batch = cache[np.random.random_integers(0, len(cache) - 1)]
@@ -55,15 +56,6 @@ def adverse_generator(train, gen_model, word_index, cache_prob, batch_size, hypo
              yield {'train_hypo' : train_batch, 'gen_hypo': gen_batch, 
                     'output2': np.zeros((batch_size))}
         
-def make_gen_batch(orig_batch, gen_model, word_index, hypo_len):
-    hidden_size = gen_model[0].nodes['hypo_merge'].output_shape[2]   
-    noise_input = np.random.normal(scale=0.11, size=(len(orig_batch), 1, hidden_size))
-    class_indices = np.random.random_integers(0, 2, len(orig_batch))
-    
-    batch, probs = generative_predict_beam(gen_model, word_index, orig_batch, noise_input, 
-                             class_indices, True, hypo_len)
-    return batch
-    
 def make_train_batch(orig_batch, word_index, hypo_len):
     _, X_hypo, _ = load_data.prepare_split_vec_dataset(orig_batch, word_index.index)
     return load_data.pad_sequences(X_hypo, maxlen = hypo_len, dim = -1, padding = 'post')
