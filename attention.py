@@ -43,7 +43,7 @@ class LstmAttentionLayer(Recurrent):
 
     @property
     def output_shape(self):
-        return (None, self.output_dim)
+        return (self.batch_size, None, self.output_dim)
 
 
     def build(self):

@@ -164,11 +164,12 @@ def validate_generative(train, gen_model, discriminator, class_model, word_index
     data = pre_generate(train, gen_model, discriminator, class_model, word_index, 
                  beam_size, target_size)
     data_len = len(data['sanity'])
-    cpred_mean =  np.mean(data['class_pred'][np.arange(data_len), data['label']])
+    cpred_loss =  -np.mean(np.log(data['class_pred'][np.arange(data_len), data['label']]))
+    cpred_acc = np.mean(np.argmax(data['class_pred'], axis = 1) == data['label'])
     san_mean = np.mean(data['sanity'])
     gen_mean = np.mean(data['gen_probs'])
     
-    return np.array([cpred_mean, san_mean, gen_mean])
+    return np.array([cpred_loss, cpred_acc, san_mean, gen_mean])
 
 def test_gen_models(train, gen_train, gen_test, gen_folder, discriminator, class_model, word_index,
                     beam_size, target_size):

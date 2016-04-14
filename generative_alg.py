@@ -37,6 +37,7 @@ def generative_train_generator(train, word_index, batch_size, prem_len, hypo_len
                     'train_input' : train_input,
                     'noise_input' : np.expand_dims(train_index, axis=1),
                     'class_input' : y_train,
+                    'control': y_train,
                     'output': np.ones((batch_size, hypo_len + 1, 1))}
                     
                     

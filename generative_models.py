@@ -158,7 +158,8 @@ def create_o_test_model(train_model, examples, hidden_size, embed_size, glove, b
     return graph, func_premise, func_noise
     
     
-def create_o2_train_model(examples, hidden_size, glove, batch_size, prem_len, hypo_len):
+def create_o2_train_model(examples, hidden_size, glove, batch_size, prem_len, hypo_len, 
+                          compile = True):
    
     premise_layer = LSTM(output_dim=hidden_size, return_sequences=True)
    
@@ -195,7 +196,8 @@ def create_o2_train_model(examples, hidden_size, glove, batch_size, prem_len, hy
                    merge_mode = 'join')
     graph.add_output(name='output', input='softmax')
     
-    graph.compile(loss={'output': hs_categorical_crossentropy}, optimizer='adam')
+    if compile:
+        graph.compile(loss={'output': hs_categorical_crossentropy}, optimizer='adam')
     return graph
     
     
@@ -251,3 +253,13 @@ def create_o2_test_model(train_model, glove):
 
     return graph, func_premise, func_noise
     
+def create_o3_train_model(gen_train):
+    hidden_size = gen_train.nodes['premise'].output_shape[2]
+    gen_train.add_node(LSTM(hidden_size, input_shape=(16, hidden_size)), 
+                          input='attention', name = 'control_lstm')
+                   
+    gen_train.add_node(Dense(3), input='control_lstm', name = 'control', create_output=True)
+    gen_train.compile(loss={'output': hs_categorical_crossentropy, 
+                        'control':'categorical_crossentropy' }, optimizer='adam')    
+
+    return gen_train
