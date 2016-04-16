@@ -2,7 +2,7 @@ import os
 import glob
 import numpy as np
 import load_data
-from generative_alg import generative_predict, generative_predict_beam
+from generative_alg import generative_predict_beam
 from adverse_alg import make_train_batch
 from keras.utils.generic_utils import Progbar
 

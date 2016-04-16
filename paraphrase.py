@@ -1,18 +1,8 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Fri Jan 08 13:24:47 2016
-
-@author: Janez
-"""
-
-
 import load_data
 import pickle
 GLOVE = 'data/snli_vectors_300.txt'
 PPDB = 'data/ppdb-2.0-s-all'
 
-
- 
 
 
 def test():

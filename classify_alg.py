@@ -14,7 +14,7 @@ def train_classify_graph(train, dev, wi, model, model_dir, nb_epochs, batch_size
     saver = ModelCheckpoint(model_dir + '/model.weights', monitor = 'val_loss')
     
     return model.fit_generator(g_train, samples_per_epoch = batch_size * 1000, nb_epoch = nb_epochs, 
-                               validation_data = g_dev, nb_val_samples = len(dev), show_accuracy=True, 
+                               validation_data = g_dev, nb_val_samples = len(dev), 
                                callbacks = [saver, es])
         
         
@@ -26,4 +26,4 @@ def graph_generator(train, batch_size, word_index):
                                                                                 word_index.index)
             padded_p = load_data.pad_sequences(X_train_p, dim = -1, padding = 'pre')
             padded_h = load_data.pad_sequences(X_train_h, dim = -1, padding = 'post')
-            yield {'premise_input': padded_p, 'hypo_input': padded_h, 'output' : y_train}
+            yield ([padded_p, padded_h], y_train)

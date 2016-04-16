@@ -1,5 +1,3 @@
-
-
 import numpy as np
 from keras.layers.embeddings import Embedding
 

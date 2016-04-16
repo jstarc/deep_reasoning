@@ -2,12 +2,8 @@ import numpy as np
 import os 
 
 import load_data
-from generative_alg import generative_predict_beam, make_gen_batch
-
+from generative_alg import make_gen_batch
 from keras.callbacks import ModelCheckpoint, EarlyStopping
-
-
-
         
 
 def train_adverse_model(train, dev, adverse_model, generative_model, word_index, model_dir, 
@@ -26,15 +22,12 @@ def train_adverse_model(train, dev, adverse_model, generative_model, word_index,
                  nb_epoch = nb_epochs, callbacks = [saver, es], validation_data = val_data) 
    
 def prepare_dev_data(dev_gen, batches):
-    dev_dicts = [next(dev_gen) for _ in range(batches)]
-    merge_dict = {}
-    for d in dev_dicts:
-        for k, v in d.iteritems():
-            merge_dict.setdefault(k, []).append(v)
-    result = {}
-    for k, v in merge_dict.iteritems():
-       result[k] = np.concatenate(v)
-    return result
+    dev_data = [next(dev_gen) for _ in range(batches)]
+    trains = np.vstack([data[0][0] for data in dev_data])
+    gens = np.vstack([data[0][1] for data in dev_data])
+    ys = np.concatenate([data[1] for data in dev_data])
+    return [trains, gens], ys
+    
     
 def adverse_generator(train, gen_model, word_index, cache_prob, batch_size, hypo_len):
     cache =  []    
@@ -53,8 +46,7 @@ def adverse_generator(train, gen_model, word_index, cache_prob, batch_size, hypo
                  gen_batch = cache[np.random.random_integers(0, len(cache) - 1)]
                  
              train_batch = make_train_batch(orig_batch, word_index, hypo_len)
-             yield {'train_hypo' : train_batch, 'gen_hypo': gen_batch, 
-                    'output2': np.zeros((batch_size))}
+             yield [train_batch, gen_batch], np.zeros(batch_size)
         
 def make_train_batch(orig_batch, word_index, hypo_len):
     _, X_hypo, _ = load_data.prepare_split_vec_dataset(orig_batch, word_index.index)

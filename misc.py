@@ -1,13 +1,7 @@
-# -*- coding: utf-8 -*-
-"""
-@author: Janez Starc
-"""
-
 import load_data
 import numpy as np
 import operator
 import os 
-import csv
 import pandas as pa
 
 def predict_example(premise, hypothesis, model, glove):

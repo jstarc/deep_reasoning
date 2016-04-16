@@ -1,53 +1,33 @@
-
-import sys
-sys.path.append('../keras')
-
-from keras.layers.recurrent import Recurrent
-from keras import activations, initializations
+from keras.layers.recurrent import LSTM
 from keras.backend import theano_backend as K
+from keras.engine import InputSpec
+            
+class LstmAttentionLayer(LSTM):
 
-from theano.ifelse import ifelse
-import theano.tensor as T
-import numpy as np
-import load_data
-
-    
-    
-def graph_train_batch(train, dev, model, glove, embed_size = 300):
-    P,H,y = load_data.prepare_split_vec_dataset(train[:128], glove)
-    padded_P = load_data.pad_sequences(P, dim = embed_size)
-    padded_H = load_data.pad_sequences(H, dim = embed_size)
-    data = {'premise_input': padded_P, 'hypo_input': padded_H, 'output' : y}
-    return model.train_on_batch(data)
-    
-        
-class LstmAttentionLayer(Recurrent):
-
-    def __init__(self, output_dim, init='glorot_uniform', inner_init='orthogonal',
-                 forget_bias_init='one', activation='tanh',
-                 inner_activation='sigmoid', batch_size = 64, feed_state = False, **kwargs):
-
-        self.output_dim = output_dim
-        self.init = initializations.get(init)
-        self.inner_init = initializations.get(inner_init)
-        self.forget_bias_init = initializations.get(forget_bias_init)
-        self.activation = activations.get(activation)
-        self.inner_activation = activations.get(inner_activation)
-        self.batch_size = batch_size
+    def __init__(self, feed_state = False, **kwargs):
         self.feed_state = feed_state
+        self.supports_masking = False
         super(LstmAttentionLayer, self).__init__(**kwargs)
 
-    def set_previous(self, layer):
-       self.previous = layer
-       self.build()
-
-    @property
-    def output_shape(self):
-        return (self.batch_size, None, self.output_dim)
-
-
-    def build(self):
-  
+    def get_output_shape_for(self, input_shape):
+        if self.return_sequences:
+            return (input_shape[1][0], input_shape[1][1], self.output_dim)
+        else:
+            return (input_shape[1][0], self.output_dim)
+            
+    def compute_mask(self, input, mask):
+        return None
+        
+    def call(self, x, mask=None):
+        return super(LSTM, self).call(x, None)
+    
+    def build(self, input_shape):
+        
+        self.input_spec = [InputSpec(shape=shape) for shape in input_shape]
+        
+        input_dim = input_shape[0][2]
+        self.input_dim = input_dim
+        
         if self.stateful:
             self.reset_states()
         else:
@@ -80,68 +60,39 @@ class LstmAttentionLayer(Recurrent):
                        self.W_c, self.U_c, self.b_c,
                        self.W_f, self.U_f, self.b_f,
                        self.W_o, self.U_o, self.b_o]
-            
     
-    def reset_states(self):
-        assert self.stateful, 'Layer must be stateful.'
-
-        if hasattr(self, 'states'):
-            K.set_value(self.states[0], np.zeros((self.batch_size, self.output_dim)))
-            K.set_value(self.states[1], np.zeros((self.batch_size, self.output_dim)))
-        else:
-            self.states = [K.zeros((self.batch_size, self.output_dim)), 
-                           K.zeros((self.batch_size, self.output_dim))]
-
-
+ 
     def set_state(self, noise):
         K.set_value(self.states[0], noise)
         
-
-
-    def get_output(self, train=False):
-        # input shape: (nb_samples, time (padded with zeros), input_dim)
-        X = self.get_input(train)
-        self.h_t = X[1]
+    def preprocess_input(self, x):
+        return x[1]
         
-        self.h_s = X[0]
-        self.P_j = K.dot(self.h_s, self.W_s)
+    def get_constants(self, x):
+        return [x[0], K.dot(x[0], self.W_s)]
         
-        if self.stateful and not train:
-            initial_states = self.states
-        else:
-            initial_states = self.get_initial_states(self.h_s)
-            if self.feed_state:
-                initial_states[0] =  X[2]
-
-        last_output, outputs, states = K.rnn(self.step, self.h_t, initial_states)
-        
-        if self.stateful:
-            self.updates = []
-            for i in range(len(states)):
-                self.updates.append((self.states[i], states[i]))
-
-        if self.return_sequences:
-            return outputs
-        else:
-            return last_output
-
-    def get_initial_states(self, X):
+    def get_initial_states(self, x):
         # build an all-zero tensor of shape (samples, output_dim)
-        initial_state = K.zeros_like(X)  # (samples, timesteps, input_dim)
+        initial_state = K.zeros_like(x[0])  # (samples, timesteps, input_dim)
         initial_state = K.sum(initial_state, axis=1)  # (samples, input_dim)
         reducer = K.zeros((self.output_dim, self.output_dim))
         initial_state = K.dot(initial_state, reducer)  # (samples, output_dim)
         initial_states = [initial_state for _ in range(len(self.states))]
+        if self.feed_state:
+            initial_states[0] =  x[2]
+
         return initial_states
 
     def step(self, x, states):
-
+        h_s = states[2]        
+        P_j = states[3] 
+        
         P_t = K.dot(x, self.W_t)
         P_a = K.dot(states[0], self.W_a)
-        sum3 = self.P_j + P_t.dimshuffle((0,'x',1)) + P_a.dimshuffle((0,'x',1))
+        sum3 = P_j + P_t.dimshuffle((0,'x',1)) + P_a.dimshuffle((0,'x',1))
         E_kj = K.tanh(sum3).dot(self.w_e)
         Alpha_kj = K.softmax(E_kj)
-        weighted = self.h_s * Alpha_kj.dimshuffle((0,1,'x'))
+        weighted = h_s * Alpha_kj.dimshuffle((0,1,'x'))
         a_k = weighted.sum(axis = 1)
         m_k = K.T.concatenate([a_k, x], axis = 1)
         
@@ -159,12 +110,7 @@ class LstmAttentionLayer(Recurrent):
         return h, [h, c]
 
     def get_config(self):
-        config = {"output_dim": self.output_dim,
-                  "init": self.init.__name__,
-                  "inner_init": self.inner_init.__name__,
-                  "forget_bias_init": self.forget_bias_init.__name__,
-                  "activation": self.activation.__name__,
-                  "inner_activation": self.inner_activation.__name__}
+        config = {'feed_state':self.feed_state}
         base_config = super(LstmAttentionLayer, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))        
         
