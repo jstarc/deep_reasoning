@@ -82,7 +82,7 @@ def gen_test(train_model, glove, batch_size):
         hypo_layer = LSTM(output_dim = hidden_size, return_sequences=True, stateful = True, 
             trainable = False, inner_activation='sigmoid', name='hypo')(hypo_embeddings)
     elif version == 2:
-        pre_hypo_layer = LSTM(output_dim=hidden_size - 3, return_sequences=True, 
+        pre_hypo_layer = LSTM(output_dim=hidden_size - 3, return_sequences=True,
             trainable = False, inner_activation='sigmoid', name='hypo')(hypo_embeddings)
         class_input = Input(batch_shape=(64, 3,), name='class_input')
         class_repeat = RepeatVector(1)(class_input)

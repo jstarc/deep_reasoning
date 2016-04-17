@@ -23,7 +23,7 @@ def graph_generator(train, batch_size, word_index):
         mb = load_data.get_minibatches_idx(len(train), batch_size, shuffle=True)
         for i, train_index in mb:
             X_train_p, X_train_h, y_train = load_data.prepare_split_vec_dataset([train[k] for k in train_index], 
-                                                                                word_index.index)
+                                                   word_index.index)
             padded_p = load_data.pad_sequences(X_train_p, dim = -1, padding = 'pre')
             padded_h = load_data.pad_sequences(X_train_h, dim = -1, padding = 'post')
             yield ([padded_p, padded_h], y_train)

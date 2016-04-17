@@ -6,15 +6,16 @@ from keras.backend import theano_backend as K
 from keras.callbacks import ModelCheckpoint
 
 
-def train_generative_graph(train, wi, model, model_dir, nb_epochs, batch_size, hypo_len):
+def train_generative_graph(train, wi, model, model_dir, batch_size):
     
     if not os.path.exists(model_dir):
          os.makedirs(model_dir)
+    hypo_len = model.get_input_shape_at(0)[1][1] -1
     g_train = generative_train_generator(train, wi, batch_size, hypo_len, 
                                         'control' in model.output_names)
-    saver = ModelCheckpoint(model_dir + '/weights.{epoch:02d}-{loss:.2f}.hdf5', monitor = 'loss')
+    saver = ModelCheckpoint(model_dir + '/weights.hdf5', monitor = 'loss')
     
-    return model.fit_generator(g_train, samples_per_epoch = 300000, nb_epoch = nb_epochs,  
+    return model.fit_generator(g_train, samples_per_epoch = batch_size * 10000, nb_epoch = 1000,  
                                callbacks = [saver])         
             
 
