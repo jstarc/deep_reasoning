@@ -1,5 +1,4 @@
 import os
-import load_data
 
 from keras.callbacks import ModelCheckpoint, EarlyStopping
 
@@ -8,7 +7,7 @@ def train_classify_graph(train, dev, wi, model, model_dir, batch_size):
     
     if not os.path.exists(model_dir):
          os.makedirs(model_dir)  
-    es = EarlyStopping(patience = 8)
+    es = EarlyStopping(patience = 5)
     saver = ModelCheckpoint(model_dir + '/model.weights', monitor = 'val_loss')
     
     return model.fit([train[0], train[1]], train[2], batch_size=batch_size, nb_epoch = 1000,
