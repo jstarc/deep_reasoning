@@ -14,7 +14,8 @@ import theano
 
 
     
-def gen_train(noise_examples, hidden_size, glove, hypo_len, version = 1, control_layer = False):
+def gen_train(noise_examples, hidden_size, glove, hypo_len, version = 1, 
+                 control_layer = True):
     prem_input = Input(shape=(None,), dtype='int32', name='prem_input')
     hypo_input = Input(shape=(hypo_len + 1,), dtype='int32', name='hypo_input')
     noise_input = Input(shape=(1,), dtype='int32', name='noise_input')
@@ -26,7 +27,7 @@ def gen_train(noise_examples, hidden_size, glove, hypo_len, version = 1, control
     premise_layer = LSTM(output_dim=hidden_size, return_sequences=True, 
                             inner_activation='sigmoid', name='premise')(prem_embeddings)
     
-    if version == 1:
+    if version == 1 or version == 3:
         hypo_layer = LSTM(output_dim=hidden_size, return_sequences=True, 
                             inner_activation='sigmoid', name='hypo')(hypo_embeddings)
     elif version == 2:
@@ -41,7 +42,7 @@ def gen_train(noise_examples, hidden_size, glove, hypo_len, version = 1, control
     if version == 1:
         creative = Dense(hidden_size, activation='tanh', name='creative')\
                         (merge([class_input, flat_noise], mode='concat'))
-    elif version == 2:
+    elif version == 2 or version == 3:
         creative = flat_noise
             
     attention = LstmAttentionLayer(output_dim=hidden_size, return_sequences=True, 
@@ -49,20 +50,22 @@ def gen_train(noise_examples, hidden_size, glove, hypo_len, version = 1, control
                
     hs = HierarchicalSoftmax(len(glove), trainable = True, name='hs')([attention, train_input])
     
-    if control_layer:
+    if control_layer: 
         control_lstm = LSTM(hidden_size, inner_activation='sigmoid')(attention)
         control = Dense(3, activation='softmax', name='control')(control_lstm)
-                 
+    
     inputs = [prem_input, hypo_input, noise_input, train_input, class_input]
-    outputs = [hs, control] if control_layer else [hs]    
-         
+    if version == 3:
+        inputs = inputs[:4]
+    outputs = [hs, control] if control_layer else [hs]         
     
     model = Model(input=inputs, output=outputs)
-    if control_layer:
-        model.compile(loss=[hs_categorical_crossentropy, 'categorical_crossentropy'],
-                      optimizer='adam', metrics={'hs':word_loss, 'control':[cc_loss, 'acc']} )
-    else:
-        model.compile(loss=hs_categorical_crossentropy, optimizer='adam')
+    if control_layer:                                                          
+        model.compile(loss=[hs_categorical_crossentropy, 'categorical_crossentropy'],  
+                      optimizer='adam', loss_weights = [1.0, 0.01],
+                      metrics={'hs':word_loss, 'control':[cc_loss, 'acc']})
+    else:                                                                              
+        model.compile(loss=hs_categorical_crossentropy, optimizer='adam')              
     
     return model
     

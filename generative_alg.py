@@ -6,12 +6,12 @@ from keras.backend import theano_backend as K
 from keras.callbacks import ModelCheckpoint
 
 
-def train_generative_graph(train, wi, model, model_dir, batch_size):
+def train(train, wi, model, model_dir, batch_size):
     
     if not os.path.exists(model_dir):
          os.makedirs(model_dir)
     hypo_len = model.get_input_shape_at(0)[1][1] -1
-    g_train = generative_train_generator(train, wi, batch_size, hypo_len, 
+    g_train = train_generator(train, wi, batch_size, hypo_len, 
                                         'control' in model.output_names)
     saver = ModelCheckpoint(model_dir + '/weights.hdf5', monitor = 'loss')
     
@@ -19,7 +19,7 @@ def train_generative_graph(train, wi, model, model_dir, batch_size):
                                callbacks = [saver])         
             
 
-def generative_train_generator(train, word_index, batch_size, hypo_len, control):
+def train_generator(train, word_index, batch_size, hypo_len, control):
     while True:
          mb = load_data.get_minibatches_idx(len(train), batch_size, shuffle=True)
         
@@ -35,7 +35,7 @@ def generative_train_generator(train, word_index, batch_size, hypo_len, control)
              train_input = np.concatenate([padded_h, np.zeros((batch_size, 1))], axis = 1)
              
              inputs = [padded_p, hypo_input, np.expand_dims(train_index, axis=1), train_input,
-                       y_train]
+                       ]#y_train]
              outputs = [np.ones((batch_size, hypo_len + 1, 1))]
              if control:
                  outputs.append(y_train)
@@ -71,7 +71,7 @@ def generative_predict_beam(test_model, word_index, examples, noise_batch, class
     for i in range(hypo_len):
         
         data = [premise, word_input, noise, np.zeros((batch_size,1)), class_input]
-        if version == 1:
+        if version == 1 or version == 3:
             data = data[:4]
         preds = core_model.predict_on_batch(data)
         split_preds = np.array(np.split(preds, len(examples)))
