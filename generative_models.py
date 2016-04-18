@@ -82,7 +82,7 @@ def gen_test(train_model, glove, batch_size):
         hypo_layer = LSTM(output_dim = hidden_size, return_sequences=True, stateful = True, 
             trainable = False, inner_activation='sigmoid', name='hypo')(hypo_embeddings)
     elif version == 2:
-        pre_hypo_layer = LSTM(output_dim=hidden_size - 3, return_sequences=True, 
+        pre_hypo_layer = LSTM(output_dim=hidden_size - 3, return_sequences=True, stateful = True, 
             trainable = False, inner_activation='sigmoid', name='hypo')(hypo_embeddings)
         class_input = Input(batch_shape=(64, 3,), name='class_input')
         class_repeat = RepeatVector(1)(class_input)
@@ -103,9 +103,7 @@ def gen_test(train_model, glove, batch_size):
     model = Model(input=inputs, output=outputs)
     model.compile(loss=hs_categorical_crossentropy, optimizer='adam')
     
-    model.get_layer('hypo').set_weights(train_model.get_layer('hypo').get_weights())
-    model.get_layer('attention').set_weights(train_model.get_layer('attention').get_weights())
-    model.get_layer('hs').set_weights(train_model.get_layer('hs').get_weights())    
+    update_gen_weights(model, train_model)
     
     func_premise = theano.function([train_model.get_layer('prem_input').input],
                                     train_model.get_layer('premise').output, 
@@ -120,7 +118,11 @@ def gen_test(train_model, glove, batch_size):
         func_noise = theano.function([noise.get_input_at(0)], noise.output, 
                                       allow_input_downcast=True) 
     return model, func_premise, func_noise
-    
+
+def update_gen_weights(test_model, train_model):
+    test_model.get_layer('hypo').set_weights(train_model.get_layer('hypo').get_weights())
+    test_model.get_layer('attention').set_weights(train_model.get_layer('attention').get_weights())
+    test_model.get_layer('hs').set_weights(train_model.get_layer('hs').get_weights()) 
     
 def word_loss(y_true, y_pred):
     return K.mean(hs_categorical_crossentropy(y_true, y_pred))

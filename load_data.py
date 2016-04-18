@@ -2,6 +2,7 @@ import numpy as np
 import json
 import sys
 sys.path.append('../keras')
+from keras.preprocessing.sequence import pad_sequences
 
 DELIMITER = "--"
 LABEL_LIST = ['neutral','contradiction','entailment']
@@ -94,23 +95,23 @@ def prepare_vec_dataset(dataset, glove):
     one_hot_y[np.arange(len(y)), y] = 1
     return np.array(X), one_hot_y
     
-def prepare_split_vec_dataset(dataset, word_index= None, glove = None):
+def prepare_split_vec_dataset(dataset, word_index, padding = True):
     P = []
     H = []
     y = []
     for example in dataset:
         if example[2] == '-':
             continue
-        if glove is not None:
-            P.append(load_word_vecs(example[0], glove))
-            H.append(load_word_vecs(example[1], glove))
-        else:
-            P.append(load_word_indices(example[0], word_index))   
-            H.append(load_word_indices(example[1], word_index))
+       
+        P.append(load_word_indices(example[0], word_index))   
+        H.append(load_word_indices(example[1], word_index))
         y.append(LABEL_LIST.index(example[2]))
     
     one_hot_y = np.zeros((len(y), len(LABEL_LIST)))
     one_hot_y[np.arange(len(y)), y] = 1
+    if pad_sequences:
+        P = pad_sequences(P, padding='pre')
+        H = pad_sequences(H, padding='post')
     return np.array(P), np.array(H), one_hot_y
     
 class WordIndex(object):
@@ -161,36 +162,6 @@ def load_word_vecs(token_list, glove):
 def load_word_indices(token_list, word_index):
     return np.array([word_index[x] for x in token_list])     
         
-def pad_sequences(sequences, maxlen=None, dim=1, dtype='float32',
-    padding='pre', truncating='pre', value=0.):
-    '''
-        Override keras method to allow multiple feature dimensions.
-
-        @dim: input feature dimension (number of features per timestep)
-    '''
-    lengths = [len(s) for s in sequences]
-
-    nb_samples = len(sequences)
-    if maxlen is None:
-        maxlen = np.max(lengths)
-
-    dims = (nb_samples, maxlen) if dim < 0 else (nb_samples, maxlen, dim)
-    x = (np.ones(dims) * value).astype(dtype)
-    for idx, s in enumerate(sequences):
-        if truncating == 'pre':
-            trunc = s[-maxlen:]
-        elif truncating == 'post':
-            trunc = s[:maxlen]
-        else:
-            raise ValueError("Truncating type '%s' not understood" % padding)
-
-        if padding == 'post':
-            x[idx, :len(trunc)] = trunc
-        elif padding == 'pre':
-            x[idx, -len(trunc):] = trunc
-        else:
-            raise ValueError("Padding type '%s' not understood" % padding)
-    return x
 
 def get_minibatches_idx(n, minibatch_size, shuffle=False):
     """
@@ -334,22 +305,35 @@ def deserialize_dataset(filename):
             dataset.append(example)
     return dataset
  
- 
+def cut_dataset(data, limit):
+    return (data[0][:limit], data[1][:limit], data[2][:limit])
 
 if __name__ == "__main__":
     train, dev, test = load_all_snli_datasets('data/snli_1.0/')
     glove = import_glove('data/snli_vectors.txt')
     
-    train = transform_dataset(train, 25, 15)
-    dev = transform_dataset(dev, 25, 15)
-    test = transform_dataset(test, 25, 15)
+    prem_len = 25
+    hypo_len = 15
     
+    train = transform_dataset(train, prem_len, hypo_len)
+    dev = transform_dataset(dev, prem_len, hypo_len)
+    test = transform_dataset(test, hypo_len, prem_len)
+    print 'Transforming finished'
     for ex in train+dev+test:
         load_word_vecs(ex[0] + ex[1], glove)
     load_word_vec('EOS', glove)
     
     wi = WordIndex(glove)
-        
+    print 'Word vec preparation finished'
+    
+    train = prepare_split_vec_dataset(train, wi.index, True)
+    dev = prepare_split_vec_dataset(dev, wi.index, True)
+    test = prepare_split_vec_dataset(test, wi.index, True)
+    
+    print 'Dataset created'
+    
+    
+    
 
 
     
