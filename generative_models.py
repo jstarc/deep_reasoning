@@ -71,7 +71,9 @@ def gen_train(noise_examples, hidden_size, glove, hypo_len, version = 1,
     
 def gen_test(train_model, glove, batch_size):
     
-    version = 1 if train_model.get_layer('creative') else 2    
+    version = 1 if train_model.get_layer('creative') else 2
+    version = version if 'class_input' in train_model.input_names else 3
+    
     hidden_size = train_model.get_layer('premise').output_shape[-1] 
     
     premise_input = Input(batch_shape=(batch_size, None, None))
@@ -81,7 +83,7 @@ def gen_test(train_model, glove, batch_size):
     
     hypo_embeddings = make_fixed_embeddings(glove, 1)(hypo_input) 
     
-    if version == 1:
+    if version == 1 or version == 3:
         hypo_layer = LSTM(output_dim = hidden_size, return_sequences=True, stateful = True, 
             trainable = False, inner_activation='sigmoid', name='hypo')(hypo_embeddings)
     elif version == 2:
@@ -116,7 +118,7 @@ def gen_test(train_model, glove, batch_size):
                     train_model.get_layer('class_input').input]
         func_noise = theano.function(f_inputs, train_model.get_layer('creative').output, 
                                      allow_input_downcast=True)                            
-    elif version == 2:
+    elif version == 2 or version == 3:
         noise = train_model.get_layer('noise_flatten')
         func_noise = theano.function([noise.get_input_at(0)], noise.output, 
                                       allow_input_downcast=True) 

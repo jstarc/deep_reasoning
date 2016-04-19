@@ -14,19 +14,20 @@ def train(train, dev, model, model_dir, batch_size, glove, beam_size, cmodel = N
     if not os.path.exists(model_dir):
          os.makedirs(model_dir)
     hypo_len = model.get_input_shape_at(0)[1][1] -1
-    g_train = generative_train_generator(train, batch_size, hypo_len, 
-                                        'control' in model.output_names)
+    g_train = train_generator(train, batch_size, hypo_len, 
+                               'control' in model.output_names, 
+                               'class_input' in model.input_names)
     saver = ModelCheckpoint(model_dir + '/weights.hdf5', monitor = 'loss')
     
     gtest = gm.gen_test(model, glove, batch_size)
-    cb = ValidateGen(dev, gtest, beam_size, hypo_len, 2 ** 10, cmodel)
+    cb = ValidateGen(dev, gtest, beam_size, hypo_len, 2 ** 12, cmodel)
     
-    hist = model.fit_generator(g_train, samples_per_epoch = 2 ** 17, nb_epoch = nb_epochs,  
+    hist = model.fit_generator(g_train, samples_per_epoch = 2 ** 18, nb_epoch = 1000,  
                                callbacks = [saver, cb])
     return hist
             
 
-def generative_train_generator(train, batch_size, hypo_len, control):
+def train_generator(train, batch_size, hypo_len, control, cinput):
     while True:
          mb = load_data.get_minibatches_idx(len(train[0]), batch_size, shuffle=True)
         
@@ -41,6 +42,8 @@ def generative_train_generator(train, batch_size, hypo_len, control):
              
              inputs = [padded_p, hypo_input, train_index[:, None], train_input,
                        y_train]
+             if not cinput:
+                 inputs = inputs[:4]
              outputs = [np.ones((batch_size, hypo_len + 1, 1))]
              if control:
                  outputs.append(y_train)
@@ -52,6 +55,7 @@ def generative_predict_beam(test_model, premises, noise_batch, class_indices, re
     
     core_model, premise_func, noise_func = test_model
     version = 2 if core_model.get_layer('class_input') else 1
+
     batch_size = core_model.input_layers[0].input_shape[0]
     
     beam_size = batch_size / len(premises)
@@ -60,7 +64,7 @@ def generative_predict_beam(test_model, premises, noise_batch, class_indices, re
       
     class_input = np.repeat(class_indices, beam_size, axis = 0)
     embed_vec = np.repeat(noise_batch, beam_size, axis = 0)
-    if version == 1:
+    if len(noise_func.input_storage) == 2:
         noise = noise_func(embed_vec, class_input)
     else:
         noise = noise_func(embed_vec)
