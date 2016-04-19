@@ -146,10 +146,12 @@ def validate(dev, gen_test, beam_size, hypo_len, samples, cmodel = None):
         batch = next(vgen)
         preplexity = np.mean(np.power(2, batch[2]))
         loss = np.mean(batch[2])
-        ceval = cmodel.evaluate([batch[0], batch[1]], batch[4], verbose = 0)
+        losses = [('hypo_loss',loss),('perplexity', preplexity)]
+        if cmodel in not None:
+            ceval = cmodel.evaluate([batch[0], batch[1]], batch[4], verbose = 0)
+            losses += [('class_loss', ceval[0]), ('class_acc', ceval[1])]
         
-        p.add(len(batch[0]), [('loss',loss),('perplexity', preplexity),
-                              ('class_loss', ceval[0]), ('class_acc', ceval[1])])
+        p.add(len(batch[0]), losses)
 
 
 class ValidateGen(Callback):
