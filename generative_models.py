@@ -84,7 +84,7 @@ def gen_test(train_model, glove, batch_size):
     hypo_embeddings = make_fixed_embeddings(glove, 1)(hypo_input) 
     
     if version == 1 or version == 3:
-        hypo_layer = LSTM(output_dim = hidden_size, return_sequences=True, stateful = True, 
+        hypo_layer = LSTM(output_dim = hidden_size, return_sequences=True, stateful = True,
             trainable = False, inner_activation='sigmoid', name='hypo')(hypo_embeddings)
     elif version == 2:
         pre_hypo_layer = LSTM(output_dim=hidden_size - 3, return_sequences=True, stateful = True, 

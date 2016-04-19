@@ -19,24 +19,22 @@ def noise_model(gen_train):
     model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
     return model 
 
-def generator(train, word_index, batch_size, split = 500000, trainable =True):
-    size = split if trainable else len(train) - split
-   
+def generator(train, word_index, batch_size, split, trainable):
+    size = split if trainable else len(train[0]) - split
     while True:
         mb = load_data.get_minibatches_idx(size, batch_size, shuffle=trainable)
         for _, train_index in mb:
             if not train:
                 train_index += split
-            _, _, y_train = load_data.prepare_split_vec_dataset(
-                               [train[k] for k in train_index], word_index.index)
-            yield [train_index], y_train
+          
+            yield [train_index], train[2][train_index]
 
 def train(model, train, word_index):
-    split = 500000
+    split = 95000
     tgen = generator(train, word_index, 64, split, True)
     dgen = generator(train, word_index, 64, split, False)
     model.fit_generator(tgen, 25600, 20,  validation_data = dgen, 
-                         nb_val_samples = len(train) - split)
+                         nb_val_samples = len(train[0]) - split)
     
     
 
