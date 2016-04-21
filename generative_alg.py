@@ -9,7 +9,8 @@ from keras.callbacks import Callback
 import generative_models as gm
 
 
-def train(train, dev, model, model_dir, batch_size, glove, beam_size, cmodel = None):
+def train(train, dev, model, model_dir, batch_size, glove, beam_size,
+          samples_per_epoch, val_samples, cmodel = None):
     
     if not os.path.exists(model_dir):
          os.makedirs(model_dir)
@@ -20,9 +21,9 @@ def train(train, dev, model, model_dir, batch_size, glove, beam_size, cmodel = N
     saver = ModelCheckpoint(model_dir + '/weights.hdf5', monitor = 'loss')
     
     gtest = gm.gen_test(model, glove, batch_size)
-    cb = ValidateGen(dev, gtest, beam_size, hypo_len, 2 ** 12, cmodel)
+    cb = ValidateGen(dev, gtest, beam_size, hypo_len, val_samples, cmodel)
     
-    hist = model.fit_generator(g_train, samples_per_epoch = 2 ** 18, nb_epoch = 1000,  
+    hist = model.fit_generator(g_train, samples_per_epoch = samples_per_epoch, nb_epoch = 1000,  
                                callbacks = [saver, cb])
     return hist
             
@@ -92,8 +93,7 @@ def generative_predict_beam(test_model, premises, noise_batch, class_indices, re
             words = np.array(word_input)
         else:
             compound_probs =  (preds[:,-1,:] + probs[:, None]).ravel()
-            print compund_probs.shape
-            split_cprobs = np.split(compound_probs, len(premises))
+            split_cprobs = compound_probs.reshape((len(premises), -1))
             max_indices = np.argpartition(-split_cprobs, beam_size)[:,:beam_size]
             probs = split_cprobs[np.arange(len(premises))[:, np.newaxis],[max_indices]].ravel()
             word_input = (max_indices % preds.shape[-1]).ravel()[:,None]
@@ -153,6 +153,7 @@ def validate(dev, gen_test, beam_size, hypo_len, samples, cmodel = None):
             losses += [('class_loss', ceval[0]), ('class_acc', ceval[1])]
         
         p.add(len(batch[0]), losses)
+    print
 
 
 class ValidateGen(Callback):
