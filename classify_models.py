@@ -17,7 +17,7 @@ def attention_model(hidden_size, glove):
                             inner_activation='sigmoid')(prem_embeddings)
     hypo_layer = LSTM(output_dim=hidden_size, return_sequences=True, 
                             inner_activation='sigmoid')(hypo_embeddings)    
-    attention = LstmAttentionLayer(output_dim = hidden_size) ([premise_layer, hypo_layer])
+    attention = LstmAttentionLayer(output_dim = hidden_size) ([hypo_layer, premise_layer])
     final_dense = Dense(3, activation='softmax')(attention)
     
     model = Model(input=[prem_input, hypo_input], output=final_dense)

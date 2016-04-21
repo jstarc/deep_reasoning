@@ -46,7 +46,7 @@ def gen_train(noise_examples, hidden_size, glove, hypo_len, version = 1,
         creative = flat_noise
             
     attention = LstmAttentionLayer(output_dim=hidden_size, return_sequences=True, 
-                    feed_state = True, name='attention') ([premise_layer, hypo_layer, creative])
+                    feed_state = True, name='attention') ([hypo_layer, premise_layer, creative])
                
     hs = HierarchicalSoftmax(len(glove), trainable = True, name='hs')([attention, train_input])
     
@@ -84,7 +84,7 @@ def gen_test(train_model, glove, batch_size):
     hypo_embeddings = make_fixed_embeddings(glove, 1)(hypo_input) 
     
     if version == 1 or version == 3:
-        hypo_layer = LSTM(output_dim = hidden_size, return_sequences=True, stateful = True,
+        hypo_layer = LSTM(output_dim = hidden_size, return_sequences=True, stateful = True, unroll=True,
             trainable = False, inner_activation='sigmoid', name='hypo')(hypo_embeddings)
     elif version == 2:
         pre_hypo_layer = LSTM(output_dim=hidden_size - 3, return_sequences=True, stateful = True, 
@@ -93,9 +93,9 @@ def gen_test(train_model, glove, batch_size):
         class_repeat = RepeatVector(1)(class_input)
         hypo_layer = merge([pre_hypo_layer, class_repeat], mode='concat')     
     
-    attention = LstmAttentionLayer(output_dim=hidden_size, return_sequences=True, stateful = True,
+    attention = LstmAttentionLayer(output_dim=hidden_size, return_sequences=True, stateful = True, unroll =True,
         trainable = False, feed_state = False, name='attention') \
-            ([premise_input, hypo_layer, creative_input])
+            ([hypo_layer, premise_input, creative_input])
 
     hs = HierarchicalSoftmax(len(glove), trainable = False, name ='hs')([attention, train_input])
     

@@ -92,7 +92,8 @@ def generative_predict_beam(test_model, premises, noise_batch, class_indices, re
             words = np.array(word_input)
         else:
             compound_probs =  (preds[:,-1,:] + probs[:, None]).ravel()
-            split_cprobs = np.array(np.split(compound_probs, len(premises)))
+            print compund_probs.shape
+            split_cprobs = np.split(compound_probs, len(premises))
             max_indices = np.argpartition(-split_cprobs, beam_size)[:,:beam_size]
             probs = split_cprobs[np.arange(len(premises))[:, np.newaxis],[max_indices]].ravel()
             word_input = (max_indices % preds.shape[-1]).ravel()[:,None]
@@ -147,7 +148,7 @@ def validate(dev, gen_test, beam_size, hypo_len, samples, cmodel = None):
         preplexity = np.mean(np.power(2, batch[2]))
         loss = np.mean(batch[2])
         losses = [('hypo_loss',loss),('perplexity', preplexity)]
-        if cmodel in not None:
+        if cmodel is not None:
             ceval = cmodel.evaluate([batch[0], batch[1]], batch[4], verbose = 0)
             losses += [('class_loss', ceval[0]), ('class_acc', ceval[1])]
         

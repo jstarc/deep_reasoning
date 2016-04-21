@@ -11,9 +11,9 @@ class LstmAttentionLayer(LSTM):
 
     def get_output_shape_for(self, input_shape):
         if self.return_sequences:
-            return (input_shape[1][0], input_shape[1][1], self.output_dim)
+            return (input_shape[0][0], input_shape[0][1], self.output_dim)
         else:
-            return (input_shape[1][0], self.output_dim)
+            return (input_shape[0][0], self.output_dim)
             
     def compute_mask(self, input, mask):
         return None
@@ -25,7 +25,7 @@ class LstmAttentionLayer(LSTM):
         
         self.input_spec = [InputSpec(shape=shape) for shape in input_shape]
         
-        input_dim = input_shape[0][2]
+        input_dim = input_shape[1][2]
         self.input_dim = input_dim
         
         if self.stateful:
@@ -66,10 +66,10 @@ class LstmAttentionLayer(LSTM):
         K.set_value(self.states[0], noise)
         
     def preprocess_input(self, x):
-        return x[1]
+        return x[0]
         
     def get_constants(self, x):
-        return [x[0], K.dot(x[0], self.W_s)]
+        return [x[1], K.dot(x[1], self.W_s)]
         
     def get_initial_states(self, x):
         # build an all-zero tensor of shape (samples, output_dim)
