@@ -3,28 +3,29 @@ import load_data
 import numpy as np
 
 from keras.backend import theano_backend as K 
-from keras.callbacks import ModelCheckpoint
+from keras.callbacks import ModelCheckpoint, EarlyStopping
 from keras.utils.generic_utils import Progbar
 from keras.callbacks import Callback
 import generative_models as gm
 
 
-def train(train, dev, model, model_dir, batch_size, glove, beam_size,
+def train(train, dev, model, model_dir, train_bsize, glove, beam_size, test_bsize,
           samples_per_epoch, val_samples, cmodel = None):
     
     if not os.path.exists(model_dir):
          os.makedirs(model_dir)
     hypo_len = model.get_input_shape_at(0)[1][1] -1
-    g_train = train_generator(train, batch_size, hypo_len, 
+    g_train = train_generator(train, train_bsize, hypo_len, 
                                'control' in model.output_names, 
                                'class_input' in model.input_names)
-    saver = ModelCheckpoint(model_dir + '/weights.hdf5', monitor = 'loss')
+    saver = ModelCheckpoint(model_dir + '/weights.hdf5', monitor = 'hypo_loss', mode = 'min')
+    es = EarlyStopping(patience = 4,  monitor = 'hypo_loss', mode = 'min')
     
-    gtest = gm.gen_test(model, glove, batch_size)
+    gtest = gm.gen_test(model, glove, test_bsize)
     cb = ValidateGen(dev, gtest, beam_size, hypo_len, val_samples, cmodel)
     
-    hist = model.fit_generator(g_train, samples_per_epoch = samples_per_epoch, nb_epoch = 1000,  
-                               callbacks = [saver, cb])
+    hist = model.fit_generator(g_train, samples_per_epoch = samples_per_epoch, nb_epoch = 2,  
+                               callbacks = [cb, saver])
     return hist
             
 
@@ -92,8 +93,7 @@ def generative_predict_beam(test_model, premises, noise_batch, class_indices, re
             word_input= word_input.ravel()[:,None]
             words = np.array(word_input)
         else:
-            compound_probs =  (preds[:,-1,:] + probs[:, None]).ravel()
-            split_cprobs = compound_probs.reshape((len(premises), -1))
+            split_cprobs =  (preds[:,-1,:] + probs[:, None]).reshape((len(premises), -1))
             max_indices = np.argpartition(-split_cprobs, beam_size)[:,:beam_size]
             probs = split_cprobs[np.arange(len(premises))[:, np.newaxis],[max_indices]].ravel()
             word_input = (max_indices % preds.shape[-1]).ravel()[:,None]
@@ -107,8 +107,8 @@ def generative_predict_beam(test_model, premises, noise_batch, class_indices, re
             words = np.concatenate([words, np.zeros((batch_size, hypo_len - words.shape[1]))], 
                                     axis = -1)
             break
-    
-    result_probs /= -lengths
+
+    result_probs /= -lengths   
     if return_best:
         best_ind = np.argmax(np.array(np.split(probs, len(premises))), axis =1) + np.arange(0, batch_size, beam_size)
         return words[best_ind], result_probs[best_ind]
@@ -154,6 +154,11 @@ def validate(dev, gen_test, beam_size, hypo_len, samples, cmodel = None):
         
         p.add(len(batch[0]), losses)
     print
+    res = {}
+    for val in p.unique_values:
+        arr = p.sum_values[val]
+        res[val] = arr[0] / arr[1]
+    return res
 
 
 class ValidateGen(Callback):
@@ -168,9 +173,10 @@ class ValidateGen(Callback):
     
     def on_epoch_end(self, epoch, logs={}):
         gm.update_gen_weights(self.gen_test[0], self.model)        
-        validate(self.dev, self.gen_test, self.beam_size, self.hypo_len, self.samples,
+        val_log =  validate(self.dev, self.gen_test, self.beam_size, self.hypo_len, self.samples,
                  self.cmodel)
-    
+        logs.update(val_log)
+        
 
                             
 

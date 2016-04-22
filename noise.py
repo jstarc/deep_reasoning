@@ -30,7 +30,7 @@ def generator(train, word_index, batch_size, split, trainable):
             yield [train_index], train[2][train_index]
 
 def train(model, train, word_index):
-    split = 95000
+    split = 500000
     tgen = generator(train, word_index, 64, split, True)
     dgen = generator(train, word_index, 64, split, False)
     model.fit_generator(tgen, 25600, 20,  validation_data = dgen, 
