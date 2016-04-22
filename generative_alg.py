@@ -7,7 +7,7 @@ from keras.callbacks import ModelCheckpoint, EarlyStopping
 from keras.utils.generic_utils import Progbar
 from keras.callbacks import Callback
 import generative_models as gm
-
+from common import CsvHistory
 
 def train(train, dev, model, model_dir, train_bsize, glove, beam_size, test_bsize,
           samples_per_epoch, val_samples, cmodel = None):
@@ -20,12 +20,13 @@ def train(train, dev, model, model_dir, train_bsize, glove, beam_size, test_bsiz
                                'class_input' in model.input_names)
     saver = ModelCheckpoint(model_dir + '/weights.hdf5', monitor = 'hypo_loss', mode = 'min')
     es = EarlyStopping(patience = 4,  monitor = 'hypo_loss', mode = 'min')
-    
+    csv = CsvHistory(model_dir + '/history.csv')
+
     gtest = gm.gen_test(model, glove, test_bsize)
     cb = ValidateGen(dev, gtest, beam_size, hypo_len, val_samples, cmodel)
     
     hist = model.fit_generator(g_train, samples_per_epoch = samples_per_epoch, nb_epoch = 2,  
-                               callbacks = [cb, saver])
+                              callbacks = [cb, saver, es, csv])
     return hist
             
 
