@@ -18,14 +18,16 @@ def train(train, dev, model, model_dir, train_bsize, glove, beam_size, test_bsiz
     g_train = train_generator(train, train_bsize, hypo_len, 
                                'control' in model.output_names, 
                                'class_input' in model.input_names)
-    saver = ModelCheckpoint(model_dir + '/weights.hdf5', monitor = 'hypo_loss', mode = 'min')
+    saver = ModelCheckpoint(model_dir + '/weights.hdf5', monitor = 'hypo_loss', mode = 'min',
+                            save_best_only = True)
     es = EarlyStopping(patience = 4,  monitor = 'hypo_loss', mode = 'min')
     csv = CsvHistory(model_dir + '/history.csv')
 
     gtest = gm.gen_test(model, glove, test_bsize)
-    cb = ValidateGen(dev, gtest, beam_size, hypo_len, val_samples, cmodel)
+    noise_size = model.get_layer('noise_embeddings').output_shape[-1]
+    cb = ValidateGen(dev, gtest, beam_size, hypo_len, val_samples, noise_size, cmodel)
     
-    hist = model.fit_generator(g_train, samples_per_epoch = samples_per_epoch, nb_epoch = 2,  
+    hist = model.fit_generator(g_train, samples_per_epoch = samples_per_epoch, nb_epoch = 1000,  
                               callbacks = [cb, saver, es, csv])
     return hist
             
@@ -123,9 +125,8 @@ def shuffle_states(graph_model, indices):
                 K.set_value(s, s.get_value()[indices])
                 
                 
-def val_generator(dev, gen_test, beam_size, hypo_len):
+def val_generator(dev, gen_test, beam_size, hypo_len, noise_size):
     batch_size = gen_test[0].input_layers[0].input_shape[0]
-    hidden_size = gen_test[0].get_layer('attention').output_shape[2]
     
     per_batch  = batch_size / beam_size
     while True:
@@ -134,15 +135,15 @@ def val_generator(dev, gen_test, beam_size, hypo_len):
             if len(train_index) != per_batch:
                continue
             premises = dev[0][train_index]
-            noise_input = np.random.normal(scale=0.11, size=(per_batch, 1, hidden_size))
+            noise_input = np.random.normal(scale=0.11, size=(per_batch, 1, noise_size))
             class_indices = np.random.random_integers(0, 2, per_batch)
             class_indices = load_data.convert_to_one_hot(class_indices, 3) 
             words, loss = generative_predict_beam(gen_test, premises, noise_input,
                              class_indices, True, hypo_len)
             yield premises, words, loss, noise_input, class_indices
 
-def validate(dev, gen_test, beam_size, hypo_len, samples, cmodel = None):
-    vgen = val_generator(dev, gen_test, beam_size, hypo_len)
+def validate(dev, gen_test, beam_size, hypo_len, samples, noise_size, cmodel = None):
+    vgen = val_generator(dev, gen_test, beam_size, hypo_len, noise_size)
     p = Progbar(samples)
     while p.seen_so_far < samples:
         batch = next(vgen)
@@ -150,8 +151,10 @@ def validate(dev, gen_test, beam_size, hypo_len, samples, cmodel = None):
         loss = np.mean(batch[2])
         losses = [('hypo_loss',loss),('perplexity', preplexity)]
         if cmodel is not None:
-            ceval = cmodel.evaluate([batch[0], batch[1]], batch[4], verbose = 0)
-            losses += [('class_loss', ceval[0]), ('class_acc', ceval[1])]
+            #ceval = cmodel.evaluate([batch[0], batch[1]], batch[4], verbose = 0)
+            #losses += [('class_loss', ceval[0]), ('class_acc', ceval[1])]
+            probs = cmodel.predict([batch[0], batch[1]], verbose = 0)
+            losses += [('class_entropy', np.mean(-np.sum(probs * np.log(probs), axis=1)))]
         
         p.add(len(batch[0]), losses)
     print
@@ -164,18 +167,19 @@ def validate(dev, gen_test, beam_size, hypo_len, samples, cmodel = None):
 
 class ValidateGen(Callback):
     
-    def __init__(self, dev, gen_test, beam_size, hypo_len, samples, cmodel):
+    def __init__(self, dev, gen_test, beam_size, hypo_len, samples, noise_size, cmodel):
         self.dev  = dev        
         self.gen_test=gen_test
         self.beam_size = beam_size
         self.hypo_len = hypo_len
         self.samples = samples
+        self.noise_size = noise_size
         self.cmodel= cmodel
     
     def on_epoch_end(self, epoch, logs={}):
         gm.update_gen_weights(self.gen_test[0], self.model)        
         val_log =  validate(self.dev, self.gen_test, self.beam_size, self.hypo_len, self.samples,
-                 self.cmodel)
+                 self.noise_size, self.cmodel)
         logs.update(val_log)
         
 

@@ -12,7 +12,7 @@ def make_fixed_embeddings(glove, seq_len):
 class CsvHistory(Callback):
     
     def __init__(self, filename):
-        self.file = open(filename, 'w')
+        self.file = open(filename, 'a')
         self.writer = csv.writer(self.file)
         self.header = True
  
@@ -24,3 +24,12 @@ class CsvHistory(Callback):
 
     def on_train_end(self, logs={}):
         self.file.close()  
+
+def merge_result_batches(batches):
+    res = list(batches[0])
+    for i in range(1, len(batches)):
+        for j in range(len(res)):
+            res[j] = np.concatenate([res[j], batches[i][j]])
+    return res
+    
+

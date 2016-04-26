@@ -15,7 +15,9 @@ import theano
 
     
 def gen_train(noise_examples, hidden_size, glove, hypo_len, version = 1, 
-                 control_layer = True):
+                 control_layer = True, class_w = 0.1):
+    
+    noise_dim = hidden_size -3 if version == 1 else hidden_size
     prem_input = Input(shape=(None,), dtype='int32', name='prem_input')
     hypo_input = Input(shape=(hypo_len + 1,), dtype='int32', name='hypo_input')
     noise_input = Input(shape=(1,), dtype='int32', name='noise_input')
@@ -36,12 +38,11 @@ def gen_train(noise_examples, hidden_size, glove, hypo_len, version = 1,
         class_repeat = RepeatVector(hypo_len + 1)(class_input)
         hypo_layer = merge([pre_hypo_layer, class_repeat], mode='concat')
     
-    noise_layer = Embedding(noise_examples, hidden_size, 
+    noise_layer = Embedding(noise_examples, noise_dim, 
                             input_length = 1, name='noise_embeddings')(noise_input)
     flat_noise = Flatten(name='noise_flatten')(noise_layer)
     if version == 1:
-        creative = Dense(hidden_size, activation='tanh', name='creative')\
-                        (merge([class_input, flat_noise], mode='concat'))
+        creative = merge([class_input, flat_noise], mode='concat', name = 'cmerge')
     elif version == 2 or version == 3:
         creative = flat_noise
             
@@ -51,7 +52,7 @@ def gen_train(noise_examples, hidden_size, glove, hypo_len, version = 1,
     hs = HierarchicalSoftmax(len(glove), trainable = True, name='hs')([attention, train_input])
     
     if control_layer: 
-        control_lstm = LSTM(hidden_size, inner_activation='sigmoid')(attention)
+        control_lstm = LstmAttentionLayer(output_dim=hidden_size)([attention, premise_layer])
         control = Dense(3, activation='softmax', name='control')(control_lstm)
     
     inputs = [prem_input, hypo_input, noise_input, train_input, class_input]
@@ -62,7 +63,7 @@ def gen_train(noise_examples, hidden_size, glove, hypo_len, version = 1,
     model = Model(input=inputs, output=outputs)
     if control_layer:                                                          
         model.compile(loss=[hs_categorical_crossentropy, 'categorical_crossentropy'],  
-                      optimizer='adam', loss_weights = [1.0, 0.01],
+                      optimizer='adam', loss_weights = [1.0, class_w],
                       metrics={'hs':word_loss, 'control':[cc_loss, 'acc']})
     else:                                                                              
         model.compile(loss=hs_categorical_crossentropy, optimizer='adam')              
@@ -71,7 +72,7 @@ def gen_train(noise_examples, hidden_size, glove, hypo_len, version = 1,
     
 def gen_test(train_model, glove, batch_size):
     
-    version = 1 if train_model.get_layer('creative') else 2
+    version = 1 if train_model.get_layer('cmerge') else 2
     version = version if 'class_input' in train_model.input_names else 3
     
     hidden_size = train_model.get_layer('premise').output_shape[-1] 
@@ -116,7 +117,7 @@ def gen_test(train_model, glove, batch_size):
     if version == 1:   
         f_inputs = [train_model.get_layer('noise_embeddings').output,
                     train_model.get_layer('class_input').input]
-        func_noise = theano.function(f_inputs, train_model.get_layer('creative').output, 
+        func_noise = theano.function(f_inputs, train_model.get_layer('cmerge').output, 
                                      allow_input_downcast=True)                            
     elif version == 2 or version == 3:
         noise = train_model.get_layer('noise_flatten')
