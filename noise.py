@@ -30,7 +30,7 @@ def generator(train, batch_size, split, trainable):
             yield [train_index], train[2][train_index]
 
 def train(model, train):
-    split = 500000
+    split = int(len(train[0]) * 0.95)
     tgen = generator(train, 64, split, True)
     dgen = generator(train, 64, split, False)
     model.fit_generator(tgen, 25600, 20,  validation_data = dgen, 
@@ -47,8 +47,8 @@ def noise_test(gen_train):
     noise_input = Input(shape=(shape[-1],))
     class_input = Input(shape=(3,))
     dense1 = Dense(shape[-1], activation = 'tanh')(merge([noise_input, class_input], mode = 'concat'))
-    dense = Dense(3, activation='softmax')(dense1)
+    dense = Dense(1, activation='sigmoid')(dense1)
 
     model = Model(input=[noise_input, class_input], output=dense)
-    model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
+    model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
     return model

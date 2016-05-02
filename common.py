@@ -12,7 +12,7 @@ def make_fixed_embeddings(glove, seq_len):
 class CsvHistory(Callback):
     
     def __init__(self, filename):
-        self.file = open(filename, 'a')
+        self.file = open(filename, 'a', 0)
         self.writer = csv.writer(self.file)
         self.header = True
  
