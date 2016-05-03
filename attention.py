@@ -63,7 +63,7 @@ class LstmAttentionLayer(LSTM):
     
  
     def set_state(self, noise):
-        K.set_value(self.states[0], noise)
+        K.set_value(self.states[1], noise)
         
     def preprocess_input(self, x):
         return x[0]
@@ -79,7 +79,7 @@ class LstmAttentionLayer(LSTM):
         initial_state = K.dot(initial_state, reducer)  # (samples, output_dim)
         initial_states = [initial_state for _ in range(len(self.states))]
         if self.feed_state:
-            initial_states[0] =  x[2]
+            initial_states[1] =  x[2]
 
         return initial_states
 
