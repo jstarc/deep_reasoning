@@ -59,7 +59,7 @@ def generative_predict_beam(test_model, premises, noise_batch, class_indices, re
                             hypo_len):
     
     core_model, premise_func, noise_func = test_model
-    version = 2 if core_model.get_layer('class_input') else 1
+    version = int(core_model.name[-1])
 
     batch_size = core_model.input_layers[0].input_shape[0]
     
@@ -69,7 +69,7 @@ def generative_predict_beam(test_model, premises, noise_batch, class_indices, re
       
     class_input = np.repeat(class_indices, beam_size, axis = 0)
     embed_vec = np.repeat(noise_batch, beam_size, axis = 0)
-    if len(noise_func.input_storage) == 2:
+    if version == 1 or version == 4:
         noise = noise_func(embed_vec, class_input)
     else:
         noise = noise_func(embed_vec)
@@ -79,13 +79,14 @@ def generative_predict_beam(test_model, premises, noise_batch, class_indices, re
 
     word_input = np.zeros((batch_size, 1))
     result_probs = np.zeros(batch_size)
+    debug_probs = np.zeros((hypo_len, batch_size))
     lengths = np.zeros(batch_size)
     words = None
     probs = None
     for i in range(hypo_len):
         
         data = [premise, word_input, noise, np.zeros((batch_size,1)), class_input]
-        if version == 1 or version == 3:
+        if version == 1 or version == 3 or version == 4:
             data = data[:4]
         preds = core_model.predict_on_batch(data)
         preds = np.log(preds)
@@ -95,6 +96,7 @@ def generative_predict_beam(test_model, premises, noise_batch, class_indices, re
             probs = split_preds[:,0,0][np.arange(len(premises))[:, np.newaxis],[word_input]].ravel()
             word_input= word_input.ravel()[:,None]
             words = np.array(word_input)
+            debug_probs[0] = probs 
         else:
             split_cprobs =  (preds[:,-1,:] + probs[:, None]).reshape((len(premises), -1))
             max_indices = np.argpartition(-split_cprobs, beam_size)[:,:beam_size]
@@ -104,19 +106,20 @@ def generative_predict_beam(test_model, premises, noise_batch, class_indices, re
             state_indices = state_indices.ravel()
             shuffle_states(core_model, state_indices)
             words = np.concatenate([words[state_indices], word_input], axis = -1)
-        result_probs += probs * (word_input[:,0] > 0).astype('int')
+            debug_probs = debug_probs[:, state_indices]
+            debug_probs[i] = probs - np.sum(debug_probs, axis = 0)
         lengths += 1 * (word_input[:,0] > 0).astype('int')
         if (np.sum(word_input) == 0):
             words = np.concatenate([words, np.zeros((batch_size, hypo_len - words.shape[1]))], 
                                     axis = -1)
             break
 
-    result_probs /= -lengths   
+    result_probs = probs / -lengths   
     if return_best:
-        best_ind = np.argmax(np.array(np.split(probs, len(premises))), axis =1) + np.arange(0, batch_size, beam_size)
+        best_ind = np.argmin(np.array(np.split(result_probs, len(premises))), axis =1) + np.arange(0, batch_size, beam_size)
         return words[best_ind], result_probs[best_ind]
     else:
-        return words, result_probs
+        return words, result_probs, debug_probs
     
 def shuffle_states(graph_model, indices):
     for l in graph_model.layers:
@@ -151,8 +154,8 @@ def validate(dev, gen_test, beam_size, hypo_len, samples, noise_size, cmodel = N
         loss = np.mean(batch[2])
         losses = [('hypo_loss',loss),('perplexity', preplexity)]
         if cmodel is not None:
-            #ceval = cmodel.evaluate([batch[0], batch[1]], batch[4], verbose = 0)
-            #losses += [('class_loss', ceval[0]), ('class_acc', ceval[1])]
+            ceval = cmodel.evaluate([batch[0], batch[1]], batch[4], verbose = 0)
+            losses += [('class_loss', ceval[0]), ('class_acc', ceval[1])]
             probs = cmodel.predict([batch[0], batch[1]], verbose = 0)
             losses += [('class_entropy', np.mean(-np.sum(probs * np.log(probs), axis=1)))]
         
