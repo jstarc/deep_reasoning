@@ -84,7 +84,6 @@ def generative_predict_beam(test_model, premises, noise_batch, class_indices, re
     words = None
     probs = None
     for i in range(hypo_len):
-        
         data = [premise, word_input, noise, np.zeros((batch_size,1)), class_input]
         if version == 1 or version == 3 or version == 4:
             data = data[:4]

@@ -14,10 +14,9 @@ import theano
 import numpy as np
 
     
-def gen_train(noise_examples, hidden_size, glove, hypo_len, version = 1, 
+def gen_train(noise_examples, hidden_size, noise_dim, glove, hypo_len, version = 1, 
                  control_layer = True, class_w = 0.1):
     
-    noise_dim = hidden_size -3 if version == 1 else hidden_size
     prem_input = Input(shape=(None,), dtype='int32', name='prem_input')
     hypo_input = Input(shape=(hypo_len + 1,), dtype='int32', name='hypo_input')
     noise_input = Input(shape=(1,), dtype='int32', name='noise_input')
@@ -32,7 +31,7 @@ def gen_train(noise_examples, hidden_size, glove, hypo_len, version = 1,
     if version == 1 or version == 3 or version == 4:
         hypo_layer = LSTM(output_dim=hidden_size, return_sequences=True, 
                             inner_activation='sigmoid', name='hypo')(hypo_embeddings)
-    elif version == 2:
+    elif version == 2 or version == 5:
         pre_hypo_layer = LSTM(output_dim=hidden_size - 3, return_sequences=True, 
                             inner_activation='sigmoid', name='hypo')(hypo_embeddings)
         class_repeat = RepeatVector(hypo_len + 1)(class_input)
@@ -46,13 +45,10 @@ def gen_train(noise_examples, hidden_size, glove, hypo_len, version = 1,
     elif version == 2 or version == 3:
         creative = flat_noise
     elif version == 4:
-        W  = [np.zeros((3, 150)), np.zeros(150)]
-        W[0][0][:50] = np.ones(50)
-        W[0][1][50:100] = np.ones(50)
-        W[0][2][-50:] = np.ones(50)
-      
-        class_sig = Dense(noise_dim, name = 'class_sig', trainable = False)(class_input)
+        class_sig = Dense(noise_dim, name = 'class_sig')(class_input)
         creative = merge([flat_noise, class_sig], mode = 'mul', name='cmerge')
+    elif version == 5:
+        creative = Dense(hidden_size, name = 'class_exp')(flat_noise)
             
     attention = LstmAttentionLayer(output_dim=hidden_size, return_sequences=True, 
                     feed_state = True, name='attention') ([hypo_layer, premise_layer, creative])
@@ -76,8 +72,6 @@ def gen_train(noise_examples, hidden_size, glove, hypo_len, version = 1,
                       metrics={'hs':word_loss, 'control':[cc_loss, 'acc']})
     else:                                                                              
         model.compile(loss=hs_categorical_crossentropy, optimizer='adam')              
-    if version == 4:
-        model.get_layer('class_sig').set_weights(W) 
     return model
     
 def gen_test(train_model, glove, batch_size):
@@ -96,7 +90,7 @@ def gen_test(train_model, glove, batch_size):
     if version == 1 or version == 3 or version == 4:
         hypo_layer = LSTM(output_dim = hidden_size, return_sequences=True, stateful = True, unroll=True,
             trainable = False, inner_activation='sigmoid', name='hypo')(hypo_embeddings)
-    elif version == 2:
+    elif version == 2 or version == 5:
         pre_hypo_layer = LSTM(output_dim=hidden_size - 3, return_sequences=True, stateful = True, 
             trainable = False, inner_activation='sigmoid', name='hypo')(hypo_embeddings)
         class_input = Input(batch_shape=(64, 3,), name='class_input')
@@ -111,7 +105,7 @@ def gen_test(train_model, glove, batch_size):
     
     
     inputs = [premise_input, hypo_input, creative_input, train_input]
-    if version == 2:
+    if version == 2 or version == 5:
         inputs.append(class_input)
     outputs = [hs]    
          
@@ -128,9 +122,11 @@ def gen_test(train_model, glove, batch_size):
                     train_model.get_layer('class_input').input]
         func_noise = theano.function(f_inputs, train_model.get_layer('cmerge').output, 
                                      allow_input_downcast=True)                            
-    elif version == 2 or version == 3:
-        noise = train_model.get_layer('noise_flatten')
-        func_noise = theano.function([noise.get_input_at(0)], noise.output, 
+    elif version == 2 or version == 3 or version == 5:
+        noise_input = train_model.get_layer('noise_flatten').get_input_at(0)
+        noise_output = train_model.get_layer('attention').get_input_at(0)[2]
+         
+        func_noise = theano.function([noise_input], noise_output, 
                                       allow_input_downcast=True) 
     return model, func_premise, func_noise
 
