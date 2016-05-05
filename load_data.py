@@ -308,6 +308,10 @@ def deserialize_dataset(filename):
 def cut_dataset(data, limit):
     return (data[0][:limit], data[1][:limit], data[2][:limit])
 
+def filter_label(data, label):
+    indices = np.where(data[2][:,label])[0]
+    return (data[0][indices], data[1][indices], data[2][indices])
+
 if __name__ == "__main__":
     train, dev, test = load_all_snli_datasets('data/snli_1.0/')
     glove = import_glove('data/snli_vectors.txt')
