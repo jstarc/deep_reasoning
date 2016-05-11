@@ -15,7 +15,7 @@ def train_adverse_model(train, dev, adverse_model, generative_model, word_index,
                                   hypo_len)
     dev_gen = adverse_generator(dev, generative_model, word_index, 0.0, batch_size, hypo_len)
     val_data = prepare_dev_data(dev_gen, len(dev) / batch_size)
-    saver = ModelCheckpoint(model_dir + '/model.weights', monitor = 'loss')
+    saver = ModelCheckpoint(model_dir + '/adverse.weights', monitor = 'loss')
     es = EarlyStopping(patience = 5)
     
     return adverse_model.fit_generator(train_gen, samples_per_epoch = 64000, 

@@ -25,16 +25,19 @@ def adverse_model(discriminator):
         assert len(inputs) == 2, ('Margin Output needs '
                               '2 inputs, %d given' % len(inputs))
         return K.log(inputs[0]) + K.log(1-inputs[1])
-        
-    def minimize(y_true, y_pred):
-        return K.abs(K.mean(y_pred, axis=-1))
-    
+            
     margin = Lambda(margin_opt, output_shape=(lambda s : (None, 1)))\
                ([discriminator(train_input), discriminator(hypo_input)])
     adverserial = Model([train_input, hypo_input], margin)
     
     adverserial.compile(loss=minimize, optimizer='adam')
     return adverserial
+
+def minimize(y_true, y_pred):
+        return K.abs(K.mean(y_pred, axis=-1))
+
+def reinit(ad_model):
+    ad_model.compile(loss=minimize, optimizer='adam')
     
     
     

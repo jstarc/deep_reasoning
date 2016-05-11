@@ -8,6 +8,8 @@ from keras.utils.generic_utils import Progbar
 from keras.callbacks import Callback
 import generative_models as gm
 from common import CsvHistory
+from common import merge_result_batches
+import adverse_models as am
 
 def train(train, dev, model, model_dir, train_bsize, glove, beam_size, test_bsize,
           samples_per_epoch, val_samples, cmodel = None):
@@ -25,7 +27,7 @@ def train(train, dev, model, model_dir, train_bsize, glove, beam_size, test_bsiz
 
     gtest = gm.gen_test(model, glove, test_bsize)
     noise_size = model.get_layer('noise_embeddings').output_shape[-1]
-    cb = ValidateGen(dev, gtest, beam_size, hypo_len, val_samples, noise_size, cmodel)
+    cb = ValidateGen(dev, gtest, beam_size, hypo_len, val_samples, noise_size, glove, cmodel, True)
     
     hist = model.fit_generator(g_train, samples_per_epoch = samples_per_epoch, nb_epoch = 1000,  
                               callbacks = [cb, saver, es, csv])
@@ -144,9 +146,10 @@ def val_generator(dev, gen_test, beam_size, hypo_len, noise_size):
                              class_indices, True, hypo_len)
             yield premises, words, loss, noise_input, class_indices
 
-def validate(dev, gen_test, beam_size, hypo_len, samples, noise_size, cmodel = None):
+def validate(dev, gen_test, beam_size, hypo_len, samples, noise_size, glove, cmodel = None, adverse = False):
     vgen = val_generator(dev, gen_test, beam_size, hypo_len, noise_size)
     p = Progbar(samples)
+    batchez = []
     while p.seen_so_far < samples:
         batch = next(vgen)
         preplexity = np.mean(np.power(2, batch[2]))
@@ -159,17 +162,34 @@ def validate(dev, gen_test, beam_size, hypo_len, samples, noise_size, cmodel = N
             losses += [('class_entropy', np.mean(-np.sum(probs * np.log(probs), axis=1)))]
         
         p.add(len(batch[0]), losses)
-    print
+        batchez.append(batch)
+    batchez = merge_result_batches(batchez)
+    
     res = {}
+    if adverse:
+        val_loss = adverse_validation(dev, batchez, glove)
+        print 'adverse_loss:', val_loss
+        res['adverse_loss'] = val_loss
+    print
     for val in p.unique_values:
         arr = p.sum_values[val]
         res[val] = arr[0] / arr[1]
     return res
 
+def adverse_validation(dev, batchez, glove):
+    samples = len(batchez[1])
+    ind = np.random.random_integers(0, len(dev[0]) -1, samples)
+    discriminator = am.discriminator(glove, 50)
+    ad_model = am.adverse_model(discriminator)
+    res = ad_model.fit([dev[1][ind], batchez[1]], np.zeros(samples), validation_split=0.1, 
+                       verbose = 0, nb_epoch = 20, callbacks = [EarlyStopping(patience=2)])
+    return np.min(res.history['val_loss'])
+
 
 class ValidateGen(Callback):
     
-    def __init__(self, dev, gen_test, beam_size, hypo_len, samples, noise_size, cmodel):
+    def __init__(self, dev, gen_test, beam_size, hypo_len, samples, noise_size, 
+                 glove, cmodel, adverse):
         self.dev  = dev        
         self.gen_test=gen_test
         self.beam_size = beam_size
@@ -177,11 +197,12 @@ class ValidateGen(Callback):
         self.samples = samples
         self.noise_size = noise_size
         self.cmodel= cmodel
-    
+        self.glove = glove
+        self.adverse = adverse    
     def on_epoch_end(self, epoch, logs={}):
         gm.update_gen_weights(self.gen_test[0], self.model)        
         val_log =  validate(self.dev, self.gen_test, self.beam_size, self.hypo_len, self.samples,
-                 self.noise_size, self.cmodel)
+                 self.noise_size, self.glove, self.cmodel, self.adverse)
         logs.update(val_log)
         
 
