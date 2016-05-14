@@ -3,6 +3,7 @@ import load_data
 from generative_alg import *
 
 def print_hypos(premise, label, gen_test, beam_size, hypo_len, noise_size, wi):
+    words = single_generate(premise, label, gen_test, beam_size, hypo_len, noise_size)
     batch_size = gen_test[0].input_layers[0].input_shape[0]
 
     per_batch  = batch_size / beam_size

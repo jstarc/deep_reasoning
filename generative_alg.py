@@ -10,6 +10,8 @@ import generative_models as gm
 from common import CsvHistory
 from common import merge_result_batches
 import adverse_models as am
+from collections import Counter
+from scipy.stats import entropy
 
 def train(train, dev, model, model_dir, train_bsize, glove, beam_size, test_bsize,
           samples_per_epoch, val_samples, cmodel = None):
@@ -20,8 +22,8 @@ def train(train, dev, model, model_dir, train_bsize, glove, beam_size, test_bsiz
     g_train = train_generator(train, train_bsize, hypo_len, 
                                'control' in model.output_names, 
                                'class_input' in model.input_names)
-    saver = ModelCheckpoint(model_dir + '/weights.hdf5', monitor = 'hypo_loss', mode = 'min',
-                            save_best_only = True)
+    #saver = ModelCheckpoint(model_dir + '/weights.hdf5', monitor = 'hypo_loss', mode = 'min', save_best_only = True)
+    saver = ModelCheckpoint(model_dir + '/weights{epoch:02d}.hdf5')
     es = EarlyStopping(patience = 4,  monitor = 'hypo_loss', mode = 'min')
     csv = CsvHistory(model_dir + '/history.csv')
 
@@ -146,6 +148,18 @@ def val_generator(dev, gen_test, beam_size, hypo_len, noise_size):
                              class_indices, True, hypo_len)
             yield premises, words, loss, noise_input, class_indices
 
+def single_generate(premise, label, gen_test, beam_size, hypo_len, noise_size):
+    batch_size = gen_test[0].input_layers[0].input_shape[0]
+    per_batch  = batch_size / beam_size
+    premises = [premise] * per_batch
+    noise_input = np.random.normal(scale=0.11, size=(per_batch, 1, noise_size))
+    class_indices = np.ones(per_batch) * label
+    class_indices = load_data.convert_to_one_hot(class_indices, 3)
+    words, loss = generative_predict_beam(gen_test, premises, noise_input,
+                             class_indices, True, hypo_len)
+
+    return words
+
 def validate(dev, gen_test, beam_size, hypo_len, samples, noise_size, glove, cmodel = None, adverse = False):
     vgen = val_generator(dev, gen_test, beam_size, hypo_len, noise_size)
     p = Progbar(samples)
@@ -170,6 +184,8 @@ def validate(dev, gen_test, beam_size, hypo_len, samples, noise_size, glove, cmo
         val_loss = adverse_validation(dev, batchez, glove)
         print 'adverse_loss:', val_loss
         res['adverse_loss'] = val_loss
+    div = diversity(dev, gen_test, beam_size, hypo_len, noise_size, 64, 16)
+    res['diversity'] = div
     print
     for val in p.unique_values:
         arr = p.sum_values[val]
@@ -185,6 +201,20 @@ def adverse_validation(dev, batchez, glove):
                        verbose = 0, nb_epoch = 20, callbacks = [EarlyStopping(patience=2)])
     return np.min(res.history['val_loss'])
 
+def diversity(dev, gen_test, beam_size, hypo_len, noise_size, per_premise, samples):
+    sind = np.random.random_integers(0, len(dev[0]) - 1, samples)
+    p = Progbar(per_premise * samples)
+    for i in sind:
+        hypos = []
+        while len(hypos) < per_premise:
+            premise = dev[0][i]
+            label = np.argmax(dev[2][i])
+            words = single_generate(premise, label, gen_test, beam_size, hypo_len, noise_size)
+            hypos += [str(ex) for ex in words]
+        d = entropy(Counter(hypos).values()) 
+        p.add(len(hypos), [('diversity', d)])
+    arr = p.sum_values['diversity']
+    return arr[0] / arr[1]
 
 class ValidateGen(Callback):
     
