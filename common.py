@@ -18,9 +18,9 @@ class CsvHistory(Callback):
  
     def on_epoch_end(self, epoch, logs={}):
         if self.header:
-            self.writer.writerow(logs.keys())
+            self.writer.writerow(['epoch'] + logs.keys())
             self.header = False
-        self.writer.writerow(logs.values())
+        self.writer.writerow([epoch] + ["%0.4f" % v for v in logs.values()])
 
     def on_train_end(self, logs={}):
         self.file.close()  
