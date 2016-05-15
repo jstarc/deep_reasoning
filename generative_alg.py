@@ -19,16 +19,16 @@ def train(train, dev, model, model_dir, train_bsize, glove, beam_size, test_bsiz
     if not os.path.exists(model_dir):
          os.makedirs(model_dir)
     hypo_len = model.get_input_shape_at(0)[1][1] -1
+    ne = model.get_layer('noise_embeddings')
     g_train = train_generator(train, train_bsize, hypo_len, 
-                               'control' in model.output_names, 
-                               'class_input' in model.input_names)
+                               'class_input' in model.input_names, ne)
     #saver = ModelCheckpoint(model_dir + '/weights.hdf5', monitor = 'hypo_loss', mode = 'min', save_best_only = True)
     saver = ModelCheckpoint(model_dir + '/weights{epoch:02d}.hdf5')
     es = EarlyStopping(patience = 4,  monitor = 'hypo_loss', mode = 'min')
     csv = CsvHistory(model_dir + '/history.csv')
 
     gtest = gm.gen_test(model, glove, test_bsize)
-    noise_size = model.get_layer('noise_embeddings').output_shape[-1]
+    noise_size = ne.output_shape[-1] if ne else 0
     cb = ValidateGen(dev, gtest, beam_size, hypo_len, val_samples, noise_size, glove, cmodel, True)
     
     hist = model.fit_generator(g_train, samples_per_epoch = samples_per_epoch, nb_epoch = 1000,  
@@ -36,7 +36,7 @@ def train(train, dev, model, model_dir, train_bsize, glove, beam_size, test_bsiz
     return hist
             
 
-def train_generator(train, batch_size, hypo_len, control, cinput):
+def train_generator(train, batch_size, hypo_len, cinput, ninput):
     while True:
          mb = load_data.get_minibatches_idx(len(train[0]), batch_size, shuffle=True)
         
@@ -45,17 +45,14 @@ def train_generator(train, batch_size, hypo_len, control, cinput):
                  continue
              padded_p = train[0][train_index]
              padded_h = train[1][train_index]
-             y_train  = train[2][train_index]
+             label = train[2][train_index]
              hypo_input = np.concatenate([np.zeros((batch_size, 1)), padded_h], axis = 1)
              train_input = np.concatenate([padded_h, np.zeros((batch_size, 1))], axis = 1)
              
-             inputs = [padded_p, hypo_input, train_index[:, None], train_input,
-                       y_train]
-             if not cinput:
-                 inputs = inputs[:4]
+             inputs = [padded_p, hypo_input] + (train_index[:, None] if ninput else []) + [train_input]
+             if cinput:
+                 inputs.append(label)
              outputs = [np.ones((batch_size, hypo_len + 1, 1))]
-             if control:
-                 outputs.append(y_train)
              yield (inputs, outputs)
 
                     
@@ -75,11 +72,12 @@ def generative_predict_beam(test_model, premises, noise_batch, class_indices, re
     embed_vec = np.repeat(noise_batch, beam_size, axis = 0)
     if version == 1 or version == 4:
         noise = noise_func(embed_vec, class_input)
-    else:
+    elif version > 0:
         noise = noise_func(embed_vec)
 
     core_model.reset_states()
-    core_model.get_layer('attention').set_state(noise)
+    if version != 0:
+        core_model.get_layer('attention').set_state(noise)
 
     word_input = np.zeros((batch_size, 1))
     result_probs = np.zeros(batch_size)
@@ -88,7 +86,8 @@ def generative_predict_beam(test_model, premises, noise_batch, class_indices, re
     words = None
     probs = None
     for i in range(hypo_len):
-        data = [premise, word_input, noise, np.zeros((batch_size,1)), class_input]
+        data = [premise, word_input] + ([] if version == 0 else [noise]) +  \
+               [np.zeros((batch_size,1)), class_input]
         if version == 1 or version == 3 or version == 4:
             data = data[:4]
         preds = core_model.predict_on_batch(data)
@@ -116,13 +115,12 @@ def generative_predict_beam(test_model, premises, noise_batch, class_indices, re
             words = np.concatenate([words, np.zeros((batch_size, hypo_len - words.shape[1]))], 
                                     axis = -1)
             break
-
     result_probs = probs / -lengths   
     if return_best:
         best_ind = np.argmin(np.array(np.split(result_probs, len(premises))), axis =1) + np.arange(0, batch_size, beam_size)
         return words[best_ind], result_probs[best_ind]
     else:
-        return words, result_probs, debug_probs
+        return words, result_probs#, debug_probs
     
 def shuffle_states(graph_model, indices):
     for l in graph_model.layers:
@@ -136,14 +134,13 @@ def val_generator(dev, gen_test, beam_size, hypo_len, noise_size):
     
     per_batch  = batch_size / beam_size
     while True:
-        mb = load_data.get_minibatches_idx(len(dev[0]), per_batch, shuffle=True)
+        mb = load_data.get_minibatches_idx(len(dev[0]), per_batch, shuffle=False)
         for i, train_index in mb:
             if len(train_index) != per_batch:
                continue
             premises = dev[0][train_index]
             noise_input = np.random.normal(scale=0.11, size=(per_batch, 1, noise_size))
-            class_indices = np.random.random_integers(0, 2, per_batch)
-            class_indices = load_data.convert_to_one_hot(class_indices, 3) 
+            class_indices = dev[2][train_index] 
             words, loss = generative_predict_beam(gen_test, premises, noise_input,
                              class_indices, True, hypo_len)
             yield premises, words, loss, noise_input, class_indices
@@ -184,7 +181,7 @@ def validate(dev, gen_test, beam_size, hypo_len, samples, noise_size, glove, cmo
         val_loss = adverse_validation(dev, batchez, glove)
         print 'adverse_loss:', val_loss
         res['adverse_loss'] = val_loss
-    div = diversity(dev, gen_test, beam_size, hypo_len, noise_size, 64, 16)
+    div = diversity(dev, gen_test, beam_size, hypo_len, noise_size, 64, 32)
     res['diversity'] = div
     print
     for val in p.unique_values:
@@ -194,15 +191,15 @@ def validate(dev, gen_test, beam_size, hypo_len, samples, noise_size, glove, cmo
 
 def adverse_validation(dev, batchez, glove):
     samples = len(batchez[1])
-    ind = np.random.random_integers(0, len(dev[0]) -1, samples)
     discriminator = am.discriminator(glove, 50)
     ad_model = am.adverse_model(discriminator)
-    res = ad_model.fit([dev[1][ind], batchez[1]], np.zeros(samples), validation_split=0.1, 
+    res = ad_model.fit([dev[1][:samples], batchez[1]], np.zeros(samples), validation_split=0.1, 
                        verbose = 0, nb_epoch = 20, callbacks = [EarlyStopping(patience=2)])
     return np.min(res.history['val_loss'])
 
 def diversity(dev, gen_test, beam_size, hypo_len, noise_size, per_premise, samples):
-    sind = np.random.random_integers(0, len(dev[0]) - 1, samples)
+    step = len(dev[0]) / samples
+    sind = [i * step for i in range(samples)]
     p = Progbar(per_premise * samples)
     for i in sind:
         hypos = []
