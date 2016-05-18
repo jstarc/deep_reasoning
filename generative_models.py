@@ -1,6 +1,6 @@
 from keras.layers.embeddings import Embedding
 from keras.layers.recurrent import LSTM
-from keras.layers.core import Dense, RepeatVector, Flatten
+from keras.layers.core import Dense, RepeatVector, Flatten, Lambda
 from keras.layers import Input, merge
 from keras.models import Model
 from keras import backend as K
@@ -86,7 +86,7 @@ def gen_test(train_model, glove, batch_size):
     if version == 1 or version == 3 or version == 4:
         hypo_layer = LSTM(output_dim = hidden_size, return_sequences=True, stateful = True, unroll=True,
             trainable = False, inner_activation='sigmoid', name='hypo')(hypo_embeddings)
-    elif version == 0 or version == 2 or version == 5 or version == 6:
+    elif version == 0 or version == 2 or version == 5 or version >= 6:
         pre_hypo_layer = LSTM(output_dim=hidden_size - 3, return_sequences=True, stateful = True, 
             trainable = False, inner_activation='sigmoid', name='hypo')(hypo_embeddings)
         class_input = Input(batch_shape=(64, 3,), name='class_input')
@@ -101,7 +101,7 @@ def gen_test(train_model, glove, batch_size):
     hs = HierarchicalSoftmax(len(glove), trainable = False, name ='hs')([attention, train_input])
     
     inputs = [premise_input, hypo_input] + ([] if version == 0 else [creative_input]) + [train_input]
-    if version == 0 or version == 2 or version == 5 or version == 6:
+    if version == 0 or version == 2 or version == 5 or version >= 6:
         inputs.append(class_input)
     outputs = [hs]    
          
@@ -118,8 +118,8 @@ def gen_test(train_model, glove, batch_size):
                     train_model.get_layer('class_input').input]
         func_noise = theano.function(f_inputs, train_model.get_layer('cmerge').output, 
                                      allow_input_downcast=True)                            
-    elif version == 2 or version == 3 or version == 5 or version == 6:
-        if version == 6:
+    elif version == 2 or version == 3 or version == 5 or version >= 6:
+        if version >= 6:
            noise_input = train_model.get_layer('expansion').get_input_at(0)
         else:
            noise_input = train_model.get_layer('noise_flatten').get_input_at(0)
@@ -146,7 +146,7 @@ def cc_loss(y_true, y_pred):
 
 
 
-def autoe_train(hidden_size, noise_dim, glove, hypo_len):
+def autoe_train(hidden_size, noise_dim, glove, hypo_len, version):
 
     prem_input = Input(shape=(None,), dtype='int32', name='prem_input')
     hypo_input = Input(shape=(hypo_len + 1,), dtype='int32', name='hypo_input')
@@ -165,11 +165,24 @@ def autoe_train(hidden_size, noise_dim, glove, hypo_len):
 
     encoder = LstmAttentionLayer(output_dim=hidden_size, return_sequences=False,
                   feed_state = False, name='encoder') ([hypo_layer, premise_layer])
+    if version == 6:
+        reduction = Dense(noise_dim, name='reduction', activation='tanh')(encoder)
+    elif version == 7:
+        z_mean = Dense(noise_dim, name='z_mean')(encoder)
+        z_log_sigma = Dense(noise_dim, name='z_log_sigma')(encoder)
+          
+        def sampling(args):
+            z_mean, z_log_sigma = args
+            epsilon = K.random_normal(shape=(64, noise_dim,),
+                              mean=0., std=0.01)
+            return z_mean + K.exp(z_log_sigma) * epsilon
+        reduction = Lambda(sampling, output_shape=lambda sh: (sh[0][0], noise_dim,), name = 'reduction')([z_mean, z_log_sigma])
+        def vae_loss(args):
+            z_mean, z_log_sigma = args
+            return - 0.5 * K.mean(1 + z_log_sigma - K.square(z_mean) - K.exp(z_log_sigma), axis=-1)    
+        vae = Lambda(vae_loss, output_shape=lambda sh: (sh[0][0], 1,), name = 'vae_output')([z_mean, z_log_sigma])
 
-    reduction = Dense(noise_dim, name='reduction', activation='tanh')(encoder)
     creative = Dense(hidden_size, name = 'expansion', activation ='tanh')(reduction)
-
-
     attention = LstmAttentionLayer(output_dim=hidden_size, return_sequences=True,
                      feed_state = True, name='attention') ([hypo_layer, premise_layer, creative])
 
@@ -177,8 +190,16 @@ def autoe_train(hidden_size, noise_dim, glove, hypo_len):
 
     inputs = [prem_input, hypo_input, train_input, class_input]
 
-    model_name = 'version6'
-    model = Model(input=inputs, output=hs, name = model_name)
-    model.compile(loss=hs_categorical_crossentropy, optimizer='adam')
-
+    model_name = 'version' + str(version)
+    model = Model(input=inputs, output=(hs if version == 6 else [hs, vae]), name = model_name)
+    if version == 6:
+        model.compile(loss=hs_categorical_crossentropy, optimizer='adam')
+    elif version == 7:
+        def minimize(y_true, y_pred):
+            return y_pred
+        def metric(y_true, y_pred):
+            return K.mean(y_pred)
+        model.compile(loss=[hs_categorical_crossentropy, minimize], metrics={'hs':word_loss, 'vae_output': metric}, optimizer='adam')
     return model
+
+

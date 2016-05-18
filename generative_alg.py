@@ -20,8 +20,9 @@ def train(train, dev, model, model_dir, train_bsize, glove, beam_size, test_bsiz
          os.makedirs(model_dir)
     hypo_len = model.get_input_shape_at(0)[1][1] -1
     ne = model.get_layer('noise_embeddings')
+    vae = model.get_layer('vae_output')
     g_train = train_generator(train, train_bsize, hypo_len, 
-                               'class_input' in model.input_names, ne)
+                               'class_input' in model.input_names, ne, vae)
     #saver = ModelCheckpoint(model_dir + '/weights.hdf5', monitor = 'hypo_loss', mode = 'min', save_best_only = True)
     saver = ModelCheckpoint(model_dir + '/weights{epoch:02d}.hdf5')
     es = EarlyStopping(patience = 4,  monitor = 'hypo_loss', mode = 'min')
@@ -36,7 +37,7 @@ def train(train, dev, model, model_dir, train_bsize, glove, beam_size, test_bsiz
     return hist
             
 
-def train_generator(train, batch_size, hypo_len, cinput, ninput):
+def train_generator(train, batch_size, hypo_len, cinput, ninput, vae):
     while True:
          mb = load_data.get_minibatches_idx(len(train[0]), batch_size, shuffle=True)
         
@@ -53,6 +54,8 @@ def train_generator(train, batch_size, hypo_len, cinput, ninput):
              if cinput:
                  inputs.append(label)
              outputs = [np.ones((batch_size, hypo_len + 1, 1))]
+             if vae:
+                 outputs += [np.zeros(batch_size)]
              yield (inputs, outputs)
 
                     
@@ -72,7 +75,7 @@ def generative_predict_beam(test_model, premises, noise_batch, class_indices, re
     embed_vec = np.repeat(noise_batch, beam_size, axis = 0)
     if version == 1 or version == 4:
         noise = noise_func(embed_vec, class_input)
-    elif version == 6:
+    elif version >= 6:
          noise = noise_func(embed_vec[:,-1,:])
     elif version > 0:
         noise = noise_func(embed_vec)
