@@ -28,8 +28,8 @@ def train(train, dev, model, model_dir, train_bsize, glove, beam_size, test_bsiz
     csv = CsvHistory(model_dir + '/history.csv')
 
     gtest = gm.gen_test(model, glove, test_bsize)
-    noise_size = ne.output_shape[-1] if ne else 0
-    cb = ValidateGen(dev, gtest, beam_size, hypo_len, val_samples, noise_size, glove, cmodel, True)
+    noise_size = ne.output_shape[-1] if ne else model.get_layer('expansion').input_shape[-1] #before was 0 for version0
+    cb = ValidateGen(dev, gtest, beam_size, hypo_len, val_samples, noise_size, glove, cmodel, True, False)
     
     hist = model.fit_generator(g_train, samples_per_epoch = samples_per_epoch, nb_epoch = 1000,  
                               callbacks = [cb, saver, es, csv])
@@ -72,9 +72,11 @@ def generative_predict_beam(test_model, premises, noise_batch, class_indices, re
     embed_vec = np.repeat(noise_batch, beam_size, axis = 0)
     if version == 1 or version == 4:
         noise = noise_func(embed_vec, class_input)
+    elif version == 6:
+         noise = noise_func(embed_vec[:,-1,:])
     elif version > 0:
         noise = noise_func(embed_vec)
-
+ 
     core_model.reset_states()
     if version != 0:
         core_model.get_layer('attention').set_state(noise)
@@ -145,11 +147,12 @@ def val_generator(dev, gen_test, beam_size, hypo_len, noise_size):
                              class_indices, True, hypo_len)
             yield premises, words, loss, noise_input, class_indices
 
-def single_generate(premise, label, gen_test, beam_size, hypo_len, noise_size):
+def single_generate(premise, label, gen_test, beam_size, hypo_len, noise_size, noise_input = None):
     batch_size = gen_test[0].input_layers[0].input_shape[0]
     per_batch  = batch_size / beam_size
     premises = [premise] * per_batch
-    noise_input = np.random.normal(scale=0.11, size=(per_batch, 1, noise_size))
+    if noise_input is None:
+        noise_input = np.random.normal(scale=0.11, size=(per_batch, 1, noise_size))
     class_indices = np.ones(per_batch) * label
     class_indices = load_data.convert_to_one_hot(class_indices, 3)
     words, loss = generative_predict_beam(gen_test, premises, noise_input,
@@ -157,7 +160,8 @@ def single_generate(premise, label, gen_test, beam_size, hypo_len, noise_size):
 
     return words
 
-def validate(dev, gen_test, beam_size, hypo_len, samples, noise_size, glove, cmodel = None, adverse = False):
+def validate(dev, gen_test, beam_size, hypo_len, samples, noise_size, glove, cmodel = None, adverse = False, 
+                 diverse = False):
     vgen = val_generator(dev, gen_test, beam_size, hypo_len, noise_size)
     p = Progbar(samples)
     batchez = []
@@ -181,8 +185,9 @@ def validate(dev, gen_test, beam_size, hypo_len, samples, noise_size, glove, cmo
         val_loss = adverse_validation(dev, batchez, glove)
         print 'adverse_loss:', val_loss
         res['adverse_loss'] = val_loss
-    div = diversity(dev, gen_test, beam_size, hypo_len, noise_size, 64, 32)
-    res['diversity'] = div
+    if diverse:
+        div = diversity(dev, gen_test, beam_size, hypo_len, noise_size, 64, 32)
+        res['diversity'] = div
     print
     for val in p.unique_values:
         arr = p.sum_values[val]
@@ -216,7 +221,7 @@ def diversity(dev, gen_test, beam_size, hypo_len, noise_size, per_premise, sampl
 class ValidateGen(Callback):
     
     def __init__(self, dev, gen_test, beam_size, hypo_len, samples, noise_size, 
-                 glove, cmodel, adverse):
+                 glove, cmodel, adverse, diverse):
         self.dev  = dev        
         self.gen_test=gen_test
         self.beam_size = beam_size
@@ -226,10 +231,11 @@ class ValidateGen(Callback):
         self.cmodel= cmodel
         self.glove = glove
         self.adverse = adverse    
+        self.diverse = diverse
     def on_epoch_end(self, epoch, logs={}):
         gm.update_gen_weights(self.gen_test[0], self.model)        
         val_log =  validate(self.dev, self.gen_test, self.beam_size, self.hypo_len, self.samples,
-                 self.noise_size, self.glove, self.cmodel, self.adverse)
+                 self.noise_size, self.glove, self.cmodel, self.adverse, self.diverse)
         logs.update(val_log)
         
 
