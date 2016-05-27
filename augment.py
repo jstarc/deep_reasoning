@@ -2,8 +2,9 @@ import os
 import glob
 import numpy as np
 import load_data
-from generative_alg import generative_predict_beam
-from adverse_alg import make_train_batch
+from generative_alg import generative_predict_beam, val_generator
+from common import merge_result_batches
+#from adverse_alg import make_train_batch
 from keras.utils.generic_utils import Progbar
 
 def adversarial_generator(train, gen_model, discriminator, word_index, beam_size):
@@ -69,6 +70,21 @@ def generate_dataset(train, gen_model, discriminator, word_index, target_size,
                 p.add(1)
     return dataset, max_scores
 
+def new_generate_dataset(dataset, samples, gen_test, beam_size, hypo_len, noise_size, cmodel):
+
+    vgen = val_generator(dataset, gen_test, beam_size, hypo_len, noise_size)
+    p = Progbar(samples)
+    batchez = []
+    while p.seen_so_far < samples:
+        batch = next(vgen)
+        probs = cmodel.predict([batch[0], batch[1]], verbose = 0)
+        batch += (probs,)
+
+        p.add(len(batch[0]))
+        batchez.append(batch)
+    return merge_result_batches(batchez)
+   
+
 def pre_generate(train, gen_model, discriminator, class_model, word_index, 
                  beam_size, target_size):
 
@@ -98,19 +114,35 @@ def pre_generate_save(train, gen_model, discriminator, class_model, word_index,
         print_ca_batch(batch, word_index, filename)
         counter += 1
 
-def deserialize_pregenerated(target_dir):
+def new_generate_save(dataset, target_dir, samples, gen_test, beam_size, hypo_len, noise_size, cmodel, word_index):
+    if not os.path.exists(target_dir):
+         os.makedirs(target_dir)
+    counter = 1
+    while True:
+        print 'Iteration', counter
+        batch = new_generate_dataset(dataset, samples, gen_test, beam_size, hypo_len, noise_size, cmodel)
+        filename = target_dir + '/data' + str(counter)
+        print_ca_batch(batch, word_index, filename)
+        counter += 1
+
+
+def deserialize_pregenerated(target_dir, wi):
     import csv
     file_list = glob.glob(target_dir + '/*')
     dataset = []
-    metrics = []
+    losses = []
+    cpreds = []
     for f in file_list:
         with open(f) as input:
             reader = csv.reader(input)
             header = next(reader)
             for ex in reader:
                 dataset.append((ex[0].split(), ex[1].split(), ex[2]))
-                metrics.append([float(ex[3]), float(ex[4])])
-    return np.array(dataset), np.array(metrics)
+                losses.append(float(ex[3]))
+                cpreds.append(float(ex[4]))
+    from load_data import prepare_split_vec_dataset as prep_dataset
+    return prep_dataset(dataset, wi.index, True) + (np.array(losses), np.array(cpreds))
+    
              
 def make_dataset(target_dir, train_len, dev_len):
     ds, met = deserialize_pregenerated(target_dir)
@@ -139,22 +171,22 @@ def print_ca_batch(ca_batch, wi, csv_file = None):
         import csv
         csvf =  open(csv_file, 'wb')
         writer = csv.writer(csvf)
-        writer.writerow(['premise', 'hypo', 'label', 'sanity', 'class_prob'])
+        writer.writerow(['premise', 'hypo', 'label', 'loss', 'class_prob'])
 
-    for i in range(len(ca_batch[ca_batch.keys()[0]])):
-        premise = wi.print_seq(ca_batch['premise'][i].astype('int'))
-        hypo = wi.print_seq(ca_batch['hypo'][i].astype('int'))
-        sanity = ca_batch['sanity'][i]
-        label = load_data.LABEL_LIST[ca_batch['label'][i]]
-        class_prob = ca_batch['class_pred'][i][ca_batch['label'][i]]
+    for i in range(len(ca_batch[0])):
+        premise = wi.print_seq(ca_batch[0][i].astype('int'))
+        hypo = wi.print_seq(ca_batch[1][i].astype('int'))
+        loss = ca_batch[2][i]
+        label = load_data.LABEL_LIST[np.argmax(ca_batch[4][i])]
+        class_prob = ca_batch[5][i][np.argmax(ca_batch[4][i])]
    
         if csv_file is None:
             print premise
             print hypo
-            print label, "sanity", sanity, 'cprob', class_prob
+            print label, "loss", loss, 'cprob', class_prob
             print
         else:
-            writer.writerow([premise, hypo, label, sanity, class_prob])                
+            writer.writerow([premise, hypo, label, loss, class_prob])                
     
     if csv_file is not None:
         csvf.close()
@@ -184,3 +216,24 @@ def test_gen_models(train, gen_train, gen_test, gen_folder, discriminator, class
         print m
         print means
 
+def filter_dataset(dataset, threshold, final_size):
+    eligible_args = dataset[4] > threshold
+    label_size = final_size / 3
+    final_args = []
+    for l in range(3):
+        label_args = dataset[2][:, l] == 1
+        intersect = label_args * eligible_args
+        if np.sum(intersect) < label_size:
+            print "loosen the constraints, label", l, np.sum(intersect) , label_size
+            return None
+        el_label_args = np.where(intersect)[0][:label_size]
+        final_args += list(el_label_args)
+    final_args = np.sort(final_args)
+    list_dataset = [col[final_args] for col in dataset]
+    return tuple(list_dataset)
+    
+
+    
+    
+    
+    
