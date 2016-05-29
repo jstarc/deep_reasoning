@@ -1,7 +1,31 @@
-from keras.layers.recurrent import LSTM
+from keras.layers.recurrent import LSTM, time_distributed_dense
 from keras.backend import theano_backend as K
 from keras.engine import InputSpec
+
+
+class FeedLSTM(LSTM):
+
+    def __init__(self, feed_layer = None , **kwargs):
+        self.feed_layer = feed_layer  
+        self.supports_masking = False
+    
+        super(FeedLSTM, self).__init__(**kwargs)
+
+    def set_state(self, noise):
+        K.set_value(self.states[1], noise)     
             
+    def get_initial_states(self, x):
+        # build an all-zero tensor of shape (samples, output_dim)
+        initial_state = K.zeros_like(x)  # (samples, timesteps, input_dim)
+        initial_state = K.sum(initial_state, axis=1)  # (samples, input_dim)
+        reducer = K.zeros((self.output_dim, self.output_dim))
+        initial_state = K.dot(initial_state, reducer)  # (samples, output_dim)
+        initial_states = [initial_state for _ in range(len(self.states))]
+        if self.feed_layer is not None:
+            initial_states[1] =  self.feed_layer
+        return initial_states
+               
+
 class LstmAttentionLayer(LSTM):
 
     def __init__(self, feed_state = False, **kwargs):
@@ -60,13 +84,11 @@ class LstmAttentionLayer(LSTM):
                        self.W_c, self.U_c, self.b_c,
                        self.W_f, self.U_f, self.b_f,
                        self.W_o, self.U_o, self.b_o]
-    
+    def preprocess_input(self, x):
+        return x[0]    
  
     def set_state(self, noise):
         K.set_value(self.states[1], noise)
-        
-    def preprocess_input(self, x):
-        return x[0]
         
     def get_constants(self, x):
         return [x[1], K.dot(x[1], self.W_s)]

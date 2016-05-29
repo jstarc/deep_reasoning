@@ -13,27 +13,28 @@ import adverse_models as am
 from collections import Counter
 from scipy.stats import entropy
 
-def train(train, dev, model, model_dir, train_bsize, glove, beam_size, test_bsize,
-          samples_per_epoch, val_samples, cmodel = None):
+def train(train, dev, model, model_dir, batch_size, glove, beam_size,
+          samples_per_epoch, val_samples, cmodel, epochs):
     
     if not os.path.exists(model_dir):
          os.makedirs(model_dir)
+
     hypo_len = model.get_input_shape_at(0)[1][1] -1
     ne = model.get_layer('noise_embeddings')
     vae = model.get_layer('vae_output')
-    g_train = train_generator(train, train_bsize, hypo_len, 
+    g_train = train_generator(train, batch_size, hypo_len, 
                                'class_input' in model.input_names, ne, vae)
-    #saver = ModelCheckpoint(model_dir + '/weights.hdf5', monitor = 'hypo_loss', mode = 'min', save_best_only = True)
-    saver = ModelCheckpoint(model_dir + '/weights{epoch:02d}.hdf5')
-    es = EarlyStopping(patience = 4,  monitor = 'hypo_loss', mode = 'min')
+    saver = ModelCheckpoint(model_dir + '/weights.hdf5', monitor = 'hypo_loss', mode = 'min', save_best_only = True)
+    #saver = ModelCheckpoint(model_dir + '/weights{epoch:02d}.hdf5')
+    #es = EarlyStopping(patience = 4,  monitor = 'hypo_loss', mode = 'min')
     csv = CsvHistory(model_dir + '/history.csv')
 
-    gtest = gm.gen_test(model, glove, test_bsize)
+    gtest = gm.gen_test(model, glove, batch_size)
     noise_size = ne.output_shape[-1] if ne else model.get_layer('expansion').input_shape[-1] #before was 0 for version0
-    cb = ValidateGen(dev, gtest, beam_size, hypo_len, val_samples, noise_size, glove, cmodel, True, False)
+    cb = ValidateGen(dev, gtest, beam_size, hypo_len, val_samples, noise_size, glove, cmodel, True, True)
     
-    hist = model.fit_generator(g_train, samples_per_epoch = samples_per_epoch, nb_epoch = 1000,  
-                              callbacks = [cb, saver, es, csv])
+    hist = model.fit_generator(g_train, samples_per_epoch = samples_per_epoch, nb_epoch = epochs,  
+                              callbacks = [cb, saver, csv])
     return hist
             
 
@@ -49,8 +50,7 @@ def train_generator(train, batch_size, hypo_len, cinput, ninput, vae):
              label = train[2][train_index]
              hypo_input = np.concatenate([np.zeros((batch_size, 1)), padded_h], axis = 1)
              train_input = np.concatenate([padded_h, np.zeros((batch_size, 1))], axis = 1)
-             
-             inputs = [padded_p, hypo_input] + (train_index[:, None] if ninput else []) + [train_input]
+             inputs = [padded_p, hypo_input] + ([train_index[:, None]] if ninput else []) + [train_input]
              if cinput:
                  inputs.append(label)
              outputs = [np.ones((batch_size, hypo_len + 1, 1))]
@@ -59,8 +59,7 @@ def train_generator(train, batch_size, hypo_len, cinput, ninput, vae):
              yield (inputs, outputs)
 
                     
-def generative_predict_beam(test_model, premises, noise_batch, class_indices, return_best, 
-                            hypo_len):
+def generative_predict_beam(test_model, premises, noise_batch, class_indices, return_best, hypo_len):
     
     core_model, premise_func, noise_func = test_model
     version = int(core_model.name[-1])
@@ -73,9 +72,9 @@ def generative_predict_beam(test_model, premises, noise_batch, class_indices, re
       
     class_input = np.repeat(class_indices, beam_size, axis = 0)
     embed_vec = np.repeat(noise_batch, beam_size, axis = 0)
-    if version == 1 or version == 4:
+    if version == 1 or version == 4 or version == 8:
         noise = noise_func(embed_vec, class_input)
-    elif version >= 6:
+    elif version == 6 or version == 7:
          noise = noise_func(embed_vec[:,-1,:])
     elif version > 0:
         noise = noise_func(embed_vec)
@@ -93,7 +92,7 @@ def generative_predict_beam(test_model, premises, noise_batch, class_indices, re
     for i in range(hypo_len):
         data = [premise, word_input] + ([] if version == 0 else [noise]) +  \
                [np.zeros((batch_size,1)), class_input]
-        if version == 1 or version == 3 or version == 4:
+        if version == 1 or version == 3 or version == 4 or version == 8:
             data = data[:4]
         preds = core_model.predict_on_batch(data)
         preds = np.log(preds)

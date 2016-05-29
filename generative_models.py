@@ -8,7 +8,7 @@ from keras import backend as K
 from hierarchical_softmax import HierarchicalSoftmax
 from hierarchical_softmax import hs_categorical_crossentropy
 from common import make_fixed_embeddings
-from attention import LstmAttentionLayer
+from attention import LstmAttentionLayer, FeedLSTM
 
 import theano
 import numpy as np
@@ -27,7 +27,7 @@ def gen_train(noise_examples, hidden_size, noise_dim, glove, hypo_len, version):
     premise_layer = LSTM(output_dim=hidden_size, return_sequences=True, 
                             inner_activation='sigmoid', name='premise')(prem_embeddings)
     
-    if version == 1 or version == 3 or version == 4:
+    if version == 1 or version == 3 or version == 4 or version == 8:
         hypo_layer = LSTM(output_dim=hidden_size, return_sequences=True, 
                             inner_activation='sigmoid', name='hypo')(hypo_embeddings)
     elif version == 0 or version == 2 or version == 5:
@@ -52,7 +52,10 @@ def gen_train(noise_examples, hidden_size, noise_dim, glove, hypo_len, version):
             creative = merge([flat_noise, class_sig], mode = 'mul', name='cmerge')
         elif version == 5:
             creative = Dense(hidden_size, name = 'class_exp')(flat_noise)
-                
+        elif version == 8:
+            merged = merge([class_input, flat_noise], mode='concat')
+            creative = Dense(hidden_size, name = 'cmerge')(merged)
+
         attention = LstmAttentionLayer(output_dim=hidden_size, return_sequences=True, 
                         feed_state = True, name='attention') ([hypo_layer, premise_layer, creative])
                
@@ -69,6 +72,32 @@ def gen_train(noise_examples, hidden_size, noise_dim, glove, hypo_len, version):
     model.compile(loss=hs_categorical_crossentropy, optimizer='adam')              
     
     return model
+
+def baseline_train(noise_examples, hidden_size, noise_dim, glove, hypo_len, version):
+    prem_input = Input(shape=(None,), dtype='int32', name='prem_input')
+    hypo_input = Input(shape=(hypo_len + 1,), dtype='int32', name='hypo_input')
+    noise_input = Input(shape=(1,), dtype='int32', name='noise_input')
+    train_input = Input(shape=(None,), dtype='int32', name='train_input')
+    class_input = Input(shape=(3,), name='class_input')
+   
+    prem_embeddings = make_fixed_embeddings(glove, None)(prem_input)
+    hypo_embeddings = make_fixed_embeddings(glove, hypo_len + 1)(hypo_input)
+
+    premise_layer = LSTM(output_dim=hidden_size, return_sequences=False,
+                            inner_activation='sigmoid', name='premise')(prem_embeddings)
+   
+    hypo_layer = FeedLSTM(output_dim=hidden_size, return_sequences=True,
+                         feed_layer = premise_layer, name='hypo')([hypo_embeddings])
+    hs = HierarchicalSoftmax(len(glove), trainable = True, name='hs')([hypo_layer, train_input])
+    inputs = [prem_input, hypo_input, noise_input, train_input, class_input]
+
+
+    model_name = 'version' + str(version)
+    model = Model(input=inputs, output=hs, name = model_name)
+    model.compile(loss=hs_categorical_crossentropy, optimizer='adam')
+
+    return model
+    
     
 def gen_test(train_model, glove, batch_size):
     
@@ -83,10 +112,10 @@ def gen_test(train_model, glove, batch_size):
     
     hypo_embeddings = make_fixed_embeddings(glove, 1)(hypo_input) 
     
-    if version == 1 or version == 3 or version == 4:
+    if version == 1 or version == 3 or version == 4 or version == 8:
         hypo_layer = LSTM(output_dim = hidden_size, return_sequences=True, stateful = True, unroll=True,
             trainable = False, inner_activation='sigmoid', name='hypo')(hypo_embeddings)
-    elif version == 0 or version == 2 or version == 5 or version >= 6:
+    elif version == 0 or version == 2 or version == 5 or version == 6 or version == 7:
         pre_hypo_layer = LSTM(output_dim=hidden_size - 3, return_sequences=True, stateful = True, 
             trainable = False, inner_activation='sigmoid', name='hypo')(hypo_embeddings)
         class_input = Input(batch_shape=(64, 3,), name='class_input')
@@ -101,7 +130,7 @@ def gen_test(train_model, glove, batch_size):
     hs = HierarchicalSoftmax(len(glove), trainable = False, name ='hs')([attention, train_input])
     
     inputs = [premise_input, hypo_input] + ([] if version == 0 else [creative_input]) + [train_input]
-    if version == 0 or version == 2 or version == 5 or version >= 6:
+    if version == 0 or version == 2 or version == 5 or version == 6 or version == 7:
         inputs.append(class_input)
     outputs = [hs]    
          
@@ -113,7 +142,7 @@ def gen_test(train_model, glove, batch_size):
     func_premise = theano.function([train_model.get_layer('prem_input').input],
                                     train_model.get_layer('premise').output, 
                                     allow_input_downcast=True)
-    if version == 1 or version == 4:   
+    if version == 1 or version == 4 or version == 8:   
         f_inputs = [train_model.get_layer('noise_embeddings').output,
                     train_model.get_layer('class_input').input]
         func_noise = theano.function(f_inputs, train_model.get_layer('cmerge').output, 
