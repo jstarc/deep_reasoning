@@ -312,7 +312,7 @@ def filter_label(data, label):
     indices = np.where(data[2][:,label])[0]
     return (data[0][indices], data[1][indices], data[2][indices])
 
-if __name__ == "__main__":
+def main():
     train, dev, test = load_all_snli_datasets('data/snli_1.0/')
     glove = import_glove('data/snli_vectors.txt')
     
@@ -335,10 +335,10 @@ if __name__ == "__main__":
     test = prepare_split_vec_dataset(test, wi.index, True)
     
     print 'Dataset created'
+    return train, dev, test, wi, glove, prem_len, hypo_len    
     
-    
-    
-
+if __name__ == "__main__":
+    train, dev, test, wi, glove, prem_len, hypo_len = main()
 
     
 

@@ -4,71 +4,8 @@ import numpy as np
 import load_data
 from generative_alg import generative_predict_beam, val_generator
 from common import merge_result_batches
-#from adverse_alg import make_train_batch
 from keras.utils.generic_utils import Progbar
 
-def adversarial_generator(train, gen_model, discriminator, word_index, beam_size):
-    batch_size, prem_len, _ = gen_model[0].inputs['premise'].input_shape
-    examples = batch_size / beam_size
-    hidden_size = gen_model[0].nodes['hypo_merge'].output_shape[2]
-    hypo_len = discriminator.input_shape[1] 
-    while True:
-         mb = load_data.get_minibatches_idx(len(train), examples, shuffle=True)
-
-         for i, train_index in mb:
-             if len(train_index) != examples:
-                 continue
-
-             orig_batch = [train[k] for k in train_index]
-             noise_input = np.random.normal(scale=0.11, size=(examples, 1, hidden_size))
-             class_indices = np.random.random_integers(0, 2, examples)
-             
-             hypo_batch, probs = generative_predict_beam(gen_model, word_index, orig_batch,
-                                            noise_input, class_indices, True, hypo_len)
-             ad_preds = discriminator.predict_on_batch(hypo_batch)[0].flatten()
-             
-             X_prem, _, _ = load_data.prepare_split_vec_dataset(orig_batch, word_index.index)
-             premise_batch = load_data.pad_sequences(X_prem, maxlen = prem_len, dim = -1,
-                                                     padding = 'pre')             
-            
-             yield {'premise' : premise_batch, 'hypo' : hypo_batch, 'label': class_indices,
-                    'sanity': ad_preds, 'gen_probs' : probs}
-
-
-def ca_generator(train, gen_model, discriminator, class_model, word_index, beam_size):
-    ad_gen = adversarial_generator(train, gen_model, discriminator, 
-                                   word_index, beam_size)
-    batch = {}
-    while True:
-        ad_batch = next(ad_gen)
-        class_batch = {'premise_input': ad_batch['premise'], 'hypo_input': ad_batch['hypo']}
-        ad_batch['class_pred'] = class_model.predict_on_batch(class_batch)['output']  
-        yield ad_batch
-
-def generate_dataset(train, gen_model, discriminator, word_index, target_size,
-                       beam_size, top_k = 1):
-
-    iters = target_size / (3 * top_k)
-    ad_gen = adversarial_generator(train, gen_model, discriminator, word_index, beam_size)
-    dataset = []
-    max_scores = []
-    p = Progbar(iters * 3 * top_k)
-    for i in range(iters):
-        ca_batch = next(ad_gen)
-        scores = ca_batch['sanity']
-        for l in range(3):
-            ind = np.where(ca_batch['label'] == l)[0]
-            top_rel_indices = np.argpartition(-scores[ind], min(top_k, len(ind) -1))[:top_k]
-            top_indices = ind[top_rel_indices]            
-            for t in top_indices:
-                premise = word_index.get_seq(ca_batch['premise'][t].astype('int'))
-                hypo = word_index.get_seq(ca_batch['hypo'][t].astype('int'))
-                clss = load_data.LABEL_LIST[ca_batch['label'][t]]
-                example = (premise, hypo, clss)
-                dataset.append(example)
-                max_scores.append(scores[t])
-                p.add(1)
-    return dataset, max_scores
 
 def new_generate_dataset(dataset, samples, gen_test, beam_size, hypo_len, noise_size, cmodel):
 
@@ -84,44 +21,21 @@ def new_generate_dataset(dataset, samples, gen_test, beam_size, hypo_len, noise_
         batchez.append(batch)
     return merge_result_batches(batchez)
    
-
-def pre_generate(train, gen_model, discriminator, class_model, word_index, 
-                 beam_size, target_size):
-
-    p = Progbar(target_size)
-    ca_gen = ca_generator(train, gen_model, discriminator, class_model, word_index, 
-                          beam_size)
-    result_dict = {}
-    while p.seen_so_far < target_size:
-        batch = next(ca_gen)
-        for k, v in batch.iteritems():
-            result_dict.setdefault(k,[]).append(v)
-        p.add(len(batch['hypo']))
-    for k, v in result_dict.iteritems():
-        result_dict[k] = np.concatenate(v)
-    return result_dict
-
-def pre_generate_save(train, gen_model, discriminator, class_model, word_index,
-                      beam_size, target_dir, file_size = 30000):
-    if not os.path.exists(target_dir):
-         os.makedirs(target_dir)
-    counter = 0
-    while True:
-        print 'Epoch', counter
-        batch = pre_generate(train, gen_model, discriminator, class_model,
-                                word_index, beam_size, file_size)
-        filename = target_dir + '/data' + str(counter) 
-        print_ca_batch(batch, word_index, filename)
-        counter += 1
-
-def new_generate_save(dataset, target_dir, samples, gen_test, beam_size, hypo_len, noise_size, cmodel, word_index):
+def new_generate_save(dataset, target_dir, samples, gen_test, beam_size, hypo_len, noise_size, cmodel, 
+                     word_index, name, target_size, threshold):
     if not os.path.exists(target_dir):
          os.makedirs(target_dir)
     counter = 1
-    while True:
-        print 'Iteration', counter
+    thresh_count = np.zeros(3)
+    label_size = target_size / 3
+    while (thresh_count < label_size).any():
+        print 'Iteration', counter, thresh_count / label_size
         batch = new_generate_dataset(dataset, samples, gen_test, beam_size, hypo_len, noise_size, cmodel)
-        filename = target_dir + '/data' + str(counter)
+        cp = np.max(batch[5] * batch[4], axis = 1)
+        for i in range(3):
+            label_sum = np.sum((cp > threshold) * batch[4][:,i] == 1)
+            thresh_count[i] += label_sum 
+        filename = target_dir + '/' + name + str(counter)
         print_ca_batch(batch, word_index, filename)
         counter += 1
 
@@ -129,9 +43,7 @@ def new_generate_save(dataset, target_dir, samples, gen_test, beam_size, hypo_le
 def deserialize_pregenerated(target_dir, wi):
     import csv
     file_list = glob.glob(target_dir + '/*')
-    dataset = []
-    losses = []
-    cpreds = []
+    dataset ,losses, cpreds, ctrues = [],[],[],[]
     for f in file_list:
         with open(f) as input:
             reader = csv.reader(input)
@@ -140,28 +52,10 @@ def deserialize_pregenerated(target_dir, wi):
                 dataset.append((ex[0].split(), ex[1].split(), ex[2]))
                 losses.append(float(ex[3]))
                 cpreds.append(float(ex[4]))
+                ctrues.append(ex[5] == 'True')
     from load_data import prepare_split_vec_dataset as prep_dataset
     return prep_dataset(dataset, wi.index, True) + (np.array(losses), np.array(cpreds))
-    
-             
-def make_dataset(target_dir, train_len, dev_len):
-    ds, met = deserialize_pregenerated(target_dir)
-    label_len = (train_len + dev_len) / 3
-    dev_label_len = dev_len / 3
-    train = []
-    dev = []
-    for label in load_data.LABEL_LIST:
-        indices = []
-        for i in range(len(ds)):
-            if ds[i][2] == label:
-                indices.append(i)
-        indices = np.array(indices)
-        good_indices = indices[np.argsort(met[indices, 1])[-label_len:]]
-        np.random.shuffle(good_indices)
-        dev += list(ds[good_indices[:dev_label_len]])
-        train += list(ds[good_indices[dev_label_len:]])
-    return train, dev
-    
+        
     
 def print_ca_batch(ca_batch, wi, csv_file = None):
     
@@ -179,11 +73,11 @@ def print_ca_batch(ca_batch, wi, csv_file = None):
         loss = ca_batch[2][i]
         label = load_data.LABEL_LIST[np.argmax(ca_batch[4][i])]
         class_prob = ca_batch[5][i][np.argmax(ca_batch[4][i])]
-   
+        ctrue = (np.argmax(ca_batch[4][i]) == np.argmax(ca_batch[5][i]))
         if csv_file is None:
             print premise
             print hypo
-            print label, "loss", loss, 'cprob', class_prob
+            print label, "loss", loss, 'cprob', class_prob, 'ctrue', ctrue
             print
         else:
             writer.writerow([premise, hypo, label, loss, class_prob])                
@@ -217,7 +111,7 @@ def test_gen_models(train, gen_train, gen_test, gen_folder, discriminator, class
         print means
 
 def filter_dataset(dataset, threshold, final_size):
-    eligible_args = dataset[4] > threshold
+    eligible_args = dataset[5] if type(threshold) == bool else dataset[4] > threshold
     label_size = final_size / 3
     final_args = []
     for l in range(3):
