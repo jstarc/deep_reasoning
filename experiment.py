@@ -2,6 +2,7 @@ import load_data
 import generative_models as gm
 import generative_alg as ga
 import classify_models as cm
+import classify_alg as ca
 import sys
 import augment
 
@@ -41,3 +42,8 @@ if __name__ == "__main__":
         augment.new_generate_save(dev, dir_name, augment_file_size, gtest, beam_size, hypo_len,
                                   latent_size, cmodel, wi, 'dev', len(dev[0]), aug_threshold)
      
+    if method == 'train_class':
+       for t in thresholds:
+           aug_train, aug_dev = augment.load_dataset(dir_name, t, len(train[0]), len(dev[0]), wi)
+           aug_cmodel = cm.attention_model(c_hidden_size, glove)
+           ca.train(aug_train, aug_dev, aug_cmodel, dir_name + '/threshold' + str(t), batch_size)

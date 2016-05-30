@@ -40,9 +40,9 @@ def new_generate_save(dataset, target_dir, samples, gen_test, beam_size, hypo_le
         counter += 1
 
 
-def deserialize_pregenerated(target_dir, wi):
+def deserialize_pregenerated(target_dir, prefix, wi):
     import csv
-    file_list = glob.glob(target_dir + '/*')
+    file_list = glob.glob(target_dir + '/'+ prefix + '*')
     dataset ,losses, cpreds, ctrues = [],[],[],[]
     for f in file_list:
         with open(f) as input:
@@ -54,7 +54,7 @@ def deserialize_pregenerated(target_dir, wi):
                 cpreds.append(float(ex[4]))
                 ctrues.append(ex[5] == 'True')
     from load_data import prepare_split_vec_dataset as prep_dataset
-    return prep_dataset(dataset, wi.index, True) + (np.array(losses), np.array(cpreds))
+    return prep_dataset(dataset, wi.index, True) + (np.array(losses), np.array(cpreds), np.array(ctrues))
         
     
 def print_ca_batch(ca_batch, wi, csv_file = None):
@@ -65,7 +65,7 @@ def print_ca_batch(ca_batch, wi, csv_file = None):
         import csv
         csvf =  open(csv_file, 'wb')
         writer = csv.writer(csvf)
-        writer.writerow(['premise', 'hypo', 'label', 'loss', 'class_prob'])
+        writer.writerow(['premise', 'hypo', 'label', 'loss', 'class_prob', 'ctrue'])
 
     for i in range(len(ca_batch[0])):
         premise = wi.print_seq(ca_batch[0][i].astype('int'))
@@ -80,7 +80,7 @@ def print_ca_batch(ca_batch, wi, csv_file = None):
             print label, "loss", loss, 'cprob', class_prob, 'ctrue', ctrue
             print
         else:
-            writer.writerow([premise, hypo, label, loss, class_prob])                
+            writer.writerow([premise, hypo, label, loss, class_prob, ctrue])                
     
     if csv_file is not None:
         csvf.close()
@@ -127,7 +127,12 @@ def filter_dataset(dataset, threshold, final_size):
     return tuple(list_dataset)
     
 
-    
+def load_dataset(target_dir, threshold, train_size, dev_size, wi):
+    train_dataset = deserialize_pregenerated(target_dir, 'train', wi)
+    aug_train = filter_dataset(train_dataset, threshold, train_size)
+    dev_dataset = deserialize_pregenerated(target_dir, 'dev', wi)
+    aug_dev = filter_dataset(dev_dataset, threshold, dev_size)
+    return aug_train, aug_dev
     
     
     
