@@ -98,14 +98,20 @@ def generative_predict_beam(test_model, premises, noise_batch, class_indices, re
         preds = np.log(preds)
         split_preds = np.array(np.split(preds, len(premises)))
         if probs is None:
-            word_input = np.argpartition(-split_preds[:, 0, 0], beam_size)[:,:beam_size]
+            if beam_size == 1:
+                word_input =  np.argmax(split_preds[:, 0, 0], axis = 1)[:,None]
+            else:
+                word_input = np.argpartition(-split_preds[:, 0, 0], beam_size)[:,:beam_size]
             probs = split_preds[:,0,0][np.arange(len(premises))[:, np.newaxis],[word_input]].ravel()
             word_input= word_input.ravel()[:,None]
             words = np.array(word_input)
             debug_probs[0] = probs 
         else:
             split_cprobs =  (preds[:,-1,:] + probs[:, None]).reshape((len(premises), -1))
-            max_indices = np.argpartition(-split_cprobs, beam_size)[:,:beam_size]
+            if beam_size == 1:
+                max_indices = np.argmax(split_cprobs, axis = 1)[:,None]
+            else:
+                max_indices = np.argpartition(-split_cprobs, beam_size)[:,:beam_size]
             probs = split_cprobs[np.arange(len(premises))[:, np.newaxis],[max_indices]].ravel()
             word_input = (max_indices % preds.shape[-1]).ravel()[:,None]
             state_indices = (max_indices / preds.shape[-1]) + np.arange(0, batch_size, beam_size)[:, None]
