@@ -2,9 +2,8 @@ import numpy as np
 import os 
 
 import load_data
-from generative_alg import make_gen_batch
 from keras.callbacks import ModelCheckpoint, EarlyStopping
-        
+import adverse_models as am        
 
 def train_adverse_model(train, dev, adverse_model, generative_model, word_index, model_dir, 
                         nb_epochs, batch_size, hypo_len): 
@@ -75,5 +74,20 @@ def manual_tester(dev, discriminator, generative_model, word_index, batch_size,
                 h.write("\t".join(h_data) + '\n')
             count += batch_size
                           
-                   
-            
+def adverse_model_train(model_dir, train, aug_train, dev, aug_dev, dim, glove):
+    discriminator = am.discriminator(glove, dim)
+    ad_model = am.adverse_model(discriminator)
+    dev_len = len(aug_dev[1])
+    res = ad_model.fit([train[1], aug_train[1]], np.zeros(len(train[1])),
+                       validation_data=([dev[1][:dev_len], aug_dev[1]], np.zeros(dev_len)),
+                       verbose = 1, nb_epoch = 5)
+    discriminator.save_weights(model_dir + '/adverse.weights')
+    
+def adverse_model_validate(model_dir, dev, aug_dev, glove, dim):
+    discriminator = am.discriminator(glove, dim)
+    discriminator.load_weights(model_dir + '/adverse.weights')
+    dev_len = len(aug_dev[1])
+    preds_orig = discriminator.predict(dev[1][:dev_len])
+    preds_aug =  discriminator.predict(aug_dev[1])
+
+    return np.mean(preds_orig > preds_aug)
