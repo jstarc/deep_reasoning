@@ -113,6 +113,7 @@ def prepare_split_vec_dataset(dataset, word_index, padding = True):
         P = pad_sequences(P, padding='pre')
         H = pad_sequences(H, padding='post')
     return np.array(P), np.array(H), one_hot_y
+
     
 class WordIndex(object):
     def __init__(self, word_vec, eos_symbol = 'EOS'):
@@ -160,7 +161,7 @@ def load_word_vecs(token_list, glove):
     return np.array([load_word_vec(x, glove) for x in token_list])   
 
 def load_word_indices(token_list, word_index):
-    return np.array([word_index[x] for x in token_list])     
+    return np.array([word_index[x] if x in word_index else word_index['null'] for x in token_list])     
         
 
 def get_minibatches_idx(n, minibatch_size, shuffle=False):
@@ -321,9 +322,10 @@ def main():
     
     train = transform_dataset(train, prem_len, hypo_len)
     dev = transform_dataset(dev, prem_len, hypo_len)
-    test = transform_dataset(test, hypo_len, prem_len)
+    test_old = transform_dataset(test, hypo_len, prem_len)
+    test_new = transform_dataset(test, prem_len, hypo_len)
     print 'Transforming finished'
-    for ex in train+dev+test:
+    for ex in train+dev+test_old:
         load_word_vecs(ex[0] + ex[1], glove)
     load_word_vec('EOS', glove)
     
@@ -332,7 +334,7 @@ def main():
     
     train = prepare_split_vec_dataset(train, wi.index, True)
     dev = prepare_split_vec_dataset(dev, wi.index, True)
-    test = prepare_split_vec_dataset(test, wi.index, True)
+    test = prepare_split_vec_dataset(test_new, wi.index, True)
     
     print 'Dataset created'
     return train, dev, test, wi, glove, prem_len, hypo_len    
