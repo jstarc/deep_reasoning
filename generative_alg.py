@@ -19,9 +19,10 @@ def train(train, dev, model, model_dir, batch_size, glove, beam_size,
     if not os.path.exists(model_dir):
          os.makedirs(model_dir)
 
-    hypo_len = model.get_input_shape_at(0)[1][1] -1
+    hypo_len = model.get_layer('hypo_input').input_shape[1] -1
     ne = model.get_layer('noise_embeddings')
     vae = model.get_layer('vae_output')
+    
     g_train = train_generator(train, batch_size, hypo_len, 
                                'class_input' in model.input_names, ne, vae)
     saver = ModelCheckpoint(model_dir + '/weights.hdf5', monitor = 'hypo_loss', mode = 'min', save_best_only = True)
@@ -29,6 +30,8 @@ def train(train, dev, model, model_dir, batch_size, glove, beam_size,
     #es = EarlyStopping(patience = 4,  monitor = 'hypo_loss', mode = 'min')
     csv = CsvHistory(model_dir + '/history.csv')
 
+     
+    
     gtest = gm.gen_test(model, glove, batch_size)
     noise_size = ne.output_shape[-1] if ne else model.get_layer('expansion').input_shape[-1] #before was 0 for version0
     cb = ValidateGen(dev, gtest, beam_size, hypo_len, val_samples, noise_size, glove, cmodel, True, True)
@@ -68,14 +71,16 @@ def generative_predict_beam(test_model, premises, noise_batch, class_indices, re
     
     beam_size = batch_size / len(premises)
     dup_premises = np.repeat(premises, beam_size, axis = 0)
-    premise = premise_func(dup_premises)
+    premise = premise_func(dup_premises) if version != 9 else None 
       
     class_input = np.repeat(class_indices, beam_size, axis = 0)
     embed_vec = np.repeat(noise_batch, beam_size, axis = 0)
     if version == 1 or version == 4 or version == 8:
         noise = noise_func(embed_vec, class_input)
     elif version == 6 or version == 7:
-         noise = noise_func(embed_vec[:,-1,:])
+        noise = noise_func(embed_vec[:,-1,:])
+    elif version == 9:
+        noise = noise_func(embed_vec, class_input, dup_premises) 
     elif version > 0:
         noise = noise_func(embed_vec)
  
@@ -89,11 +94,14 @@ def generative_predict_beam(test_model, premises, noise_batch, class_indices, re
     lengths = np.zeros(batch_size)
     words = None
     probs = None
+   
     for i in range(hypo_len):
         data = [premise, word_input] + ([] if version == 0 else [noise]) +  \
                [np.zeros((batch_size,1)), class_input]
-        if version == 1 or version == 3 or version == 4 or version == 8:
+        if version == 1 or version == 3 or version == 4 or version == 8 or version ==9:
             data = data[:4]
+        if version == 9:
+            data = data[1:]
         preds = core_model.predict_on_batch(data)
         preds = np.log(preds)
         split_preds = np.array(np.split(preds, len(premises)))
@@ -130,7 +138,7 @@ def generative_predict_beam(test_model, premises, noise_batch, class_indices, re
         best_ind = np.argmin(np.array(np.split(result_probs, len(premises))), axis =1) + np.arange(0, batch_size, beam_size)
         return words[best_ind], result_probs[best_ind]
     else:
-        return words, result_probs#, debug_probs
+        return words, result_probs, debug_probs
     
 def shuffle_states(graph_model, indices):
     for l in graph_model.layers:
@@ -194,7 +202,7 @@ def validate(dev, gen_test, beam_size, hypo_len, samples, noise_size, glove, cmo
         print 'adverse_loss:', val_loss
         res['adverse_loss'] = val_loss
     if diverse:
-        div = diversity(dev, gen_test, beam_size, hypo_len, noise_size, 64, 32)
+        div, _, _ = diversity(dev, gen_test, beam_size, hypo_len, noise_size, 64, 32)
         res['diversity'] = div
     print
     for val in p.unique_values:
@@ -216,15 +224,33 @@ def diversity(dev, gen_test, beam_size, hypo_len, noise_size, per_premise, sampl
     p = Progbar(per_premise * samples)
     for i in sind:
         hypos = []
+        unique_words = []
+        hypo_list = []
         while len(hypos) < per_premise:
             premise = dev[0][i]
             label = np.argmax(dev[2][i])
             words = single_generate(premise, label, gen_test, beam_size, hypo_len, noise_size)
             hypos += [str(ex) for ex in words]
+            unique_words += [int(w) for ex in words for w in ex if w > 0]
+            hypo_list += [set(cut_zeros(list(ex))) for ex in words]
+        
+        jacks = []  
+        for u in range(len(hypo_list)):
+            for v in range(u+1, len(hypo_list)):
+                sim = len(hypo_list[u] & hypo_list[v])/float(len(hypo_list[u] | hypo_list[v]))
+                jacks.append(sim)
+        avg_dist = 1 -  np.mean(jacks)
         d = entropy(Counter(hypos).values()) 
-        p.add(len(hypos), [('diversity', d)])
-    arr = p.sum_values['diversity']
-    return arr[0] / arr[1]
+        w = entropy(Counter(unique_words).values())
+        p.add(len(hypos), [('diversity', d),('word_entropy', w),('avg_dist', avg_dist)])
+    arrd = p.sum_values['diversity']
+    arrw = p.sum_values['word_entropy']
+    arrj = p.sum_values['avg_dist']
+    
+    return arrd[0] / arrd[1], arrw[0] / arrw[1], arrj[0] / arrj[1]
+
+def cut_zeros(list):
+    return [a for a in list if a > 0]
 
 class ValidateGen(Callback):
     

@@ -111,7 +111,17 @@ def test_gen_models(train, gen_train, gen_test, gen_folder, discriminator, class
         print means
 
 def filter_dataset(dataset, threshold, final_size):
-    eligible_args = dataset[5] if type(threshold) == bool else dataset[4] > threshold
+    if type(threshold) == bool:
+        eligible_args = (dataset[5] == True) #to make copy
+    elif type(threshold) == str:
+        arg = threshold[:2]
+        num = float(threshold[2:])
+        eligible_args = (dataset[5] == True)  
+        loss_args = (arg == 'lb') - (dataset[3] > num)
+        eligible_args *= loss_args
+        
+    else:
+        eligible_args = dataset[4] > threshold
     label_size = final_size / 3
     final_args = []
     for l in range(3):
@@ -133,6 +143,5 @@ def load_dataset(target_dir, threshold, train_size, dev_size, wi):
     dev_dataset = deserialize_pregenerated(target_dir, 'dev', wi)
     aug_dev = filter_dataset(dev_dataset, threshold, dev_size)
     return aug_train, aug_dev
-    
-    
-    
+            
+        
