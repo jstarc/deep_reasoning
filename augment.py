@@ -29,7 +29,6 @@ def new_generate_save(dataset, target_dir, samples, gen_test, beam_size, hypo_le
     thresh_count = np.zeros(3)
     label_size = target_size / 3
     while (thresh_count < label_size).any():
-        print 'Iteration', counter, thresh_count / label_size
         batch = new_generate_dataset(dataset, samples, gen_test, beam_size, hypo_len, noise_size, cmodel)
         cp = np.max(batch[5] * batch[4], axis = 1)
         for i in range(3):
@@ -38,25 +37,42 @@ def new_generate_save(dataset, target_dir, samples, gen_test, beam_size, hypo_le
         filename = target_dir + '/' + name + str(counter)
         print_ca_batch(batch, word_index, filename)
         counter += 1
+        print 'Iteration', counter, thresh_count / label_size
 
-
-def deserialize_pregenerated(target_dir, prefix, wi):
+def deserialize_pregenerated(target_dir, prefix, wi, threshold, dataset_len):
     import csv
     file_list = glob.glob(target_dir + '/'+ prefix + '*')
     dataset ,losses, cpreds, ctrues = [],[],[],[]
+    counts = np.array([0,0,0])
+    label_len = dataset_len / 3
     for f in file_list:
         with open(f) as input:
             reader = csv.reader(input)
             header = next(reader)
             for ex in reader:
-                dataset.append((ex[0].split(), ex[1].split(), ex[2]))
-                losses.append(float(ex[3]))
-                cpreds.append(float(ex[4]))
-                ctrues.append(ex[5] == 'True')
+                loss, cpred, ctrue = float(ex[3]), float(ex[4]), ex[5] == 'True'
+                label = load_data.LABEL_LIST.index(ex[2])
+                if pass_threshold(loss, cpred, ctrue, threshold) and counts[label] < label_len:
+                    dataset.append((ex[0].split(), ex[1].split(), ex[2]))
+                    losses.append(loss)
+                    cpreds.append(cpred)
+                    ctrues.append(ctrue)
+                    counts[label] += 1
+                    
     from load_data import prepare_split_vec_dataset as prep_dataset
+    
     return prep_dataset(dataset, wi.index, True) + (np.array(losses), np.array(cpreds), np.array(ctrues))
         
-    
+def pass_threshold(loss, cpred, ctrue, threshold):
+    if type(threshold) == bool:
+        return ctrue
+    elif type(threshold) == str:
+        arg = threshold[:2]
+        num = float(threshold[2:])
+        return ctrue & (arg == 'la' == loss > num)
+    else:
+        return cpred > threshold    
+
 def print_ca_batch(ca_batch, wi, csv_file = None):
     
     writer = None
@@ -110,38 +126,9 @@ def test_gen_models(train, gen_train, gen_test, gen_folder, discriminator, class
         print m
         print means
 
-def filter_dataset(dataset, threshold, final_size):
-    if type(threshold) == bool:
-        eligible_args = (dataset[5] == True) #to make copy
-    elif type(threshold) == str:
-        arg = threshold[:2]
-        num = float(threshold[2:])
-        eligible_args = (dataset[5] == True)  
-        loss_args = (arg == 'lb') - (dataset[3] > num)
-        eligible_args *= loss_args
-        
-    else:
-        eligible_args = dataset[4] > threshold
-    label_size = final_size / 3
-    final_args = []
-    for l in range(3):
-        label_args = dataset[2][:, l] == 1
-        intersect = label_args * eligible_args
-        if np.sum(intersect) < label_size:
-            print "loosen the constraints, label", l, np.sum(intersect) , label_size
-            return None
-        el_label_args = np.where(intersect)[0][:label_size]
-        final_args += list(el_label_args)
-    final_args = np.sort(final_args)
-    list_dataset = [col[final_args] for col in dataset]
-    return tuple(list_dataset)
-    
-
 def load_dataset(target_dir, threshold, train_size, dev_size, wi):
-    train_dataset = deserialize_pregenerated(target_dir, 'train', wi)
-    aug_train = filter_dataset(train_dataset, threshold, train_size)
-    dev_dataset = deserialize_pregenerated(target_dir, 'dev', wi)
-    aug_dev = filter_dataset(dev_dataset, threshold, dev_size)
+    aug_dev = deserialize_pregenerated(target_dir, 'dev', wi, threshold, dev_size)
+    aug_train = deserialize_pregenerated(target_dir, 'train', wi, threshold, train_size)
     return aug_train, aug_dev
             
         
