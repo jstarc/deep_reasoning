@@ -45,31 +45,41 @@ def deserialize_pregenerated(target_dir, prefix, wi, threshold, dataset_len):
     dataset ,losses, cpreds, ctrues = [],[],[],[]
     counts = np.array([0,0,0])
     label_len = dataset_len / 3
+    finish = False
     for f in file_list:
+        if finish:
+            break
         with open(f) as input:
             reader = csv.reader(input)
             header = next(reader)
             for ex in reader:
                 loss, cpred, ctrue = float(ex[3]), float(ex[4]), ex[5] == 'True'
                 label = load_data.LABEL_LIST.index(ex[2])
-                if pass_threshold(loss, cpred, ctrue, threshold) and counts[label] < label_len:
-                    dataset.append((ex[0].split(), ex[1].split(), ex[2]))
+                example = (ex[0].split(), ex[1].split(), ex[2])
+                if pass_threshold(example, loss, cpred, ctrue, threshold) and counts[label] < label_len:
+                    dataset.append(example)
                     losses.append(loss)
                     cpreds.append(cpred)
                     ctrues.append(ctrue)
                     counts[label] += 1
-                    
+            
+                if (counts - label_len == 0).all():
+                    finish = True
+                    break
+                              
     from load_data import prepare_split_vec_dataset as prep_dataset
     
     return prep_dataset(dataset, wi.index, True) + (np.array(losses), np.array(cpreds), np.array(ctrues))
         
-def pass_threshold(loss, cpred, ctrue, threshold):
+def pass_threshold(example, loss, cpred, ctrue, threshold):
     if type(threshold) == bool:
         return ctrue
     elif type(threshold) == str:
         arg = threshold[:2]
         num = float(threshold[2:])
         return ctrue & (arg == 'la' == loss > num)
+    elif hasattr(threshold, '__call__'):
+        return threshold(example, loss, cpred, ctrue)
     else:
         return cpred > threshold    
 

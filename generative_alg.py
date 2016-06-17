@@ -33,7 +33,7 @@ def train(train, dev, model, model_dir, batch_size, glove, beam_size,
      
     
     gtest = gm.gen_test(model, glove, batch_size)
-    noise_size = ne.output_shape[-1] if ne else model.get_layer('expansion').input_shape[-1] #before was 0 for version0
+    noise_size = ne.output_shape[-1] if ne else model.get_layer('expansion').input_shape[-1] 
     cb = ValidateGen(dev, gtest, beam_size, hypo_len, val_samples, noise_size, glove, cmodel, True, True)
     
     hist = model.fit_generator(g_train, samples_per_epoch = samples_per_epoch, nb_epoch = epochs,  
@@ -75,18 +75,17 @@ def generative_predict_beam(test_model, premises, noise_batch, class_indices, re
       
     class_input = np.repeat(class_indices, beam_size, axis = 0)
     embed_vec = np.repeat(noise_batch, beam_size, axis = 0)
-    if version == 1 or version == 4 or version == 8:
+    if version == 8:
         noise = noise_func(embed_vec, class_input)
     elif version == 6 or version == 7:
-        noise = noise_func(embed_vec[:,-1,:])
+        noise = noise_func(embed_vec[:,-1,:], class_input)
     elif version == 9:
         noise = noise_func(embed_vec, class_input, dup_premises) 
-    elif version > 0:
+    elif version == 5:
         noise = noise_func(embed_vec)
  
     core_model.reset_states()
-    if version != 0:
-        core_model.get_layer('attention').set_state(noise)
+    core_model.get_layer('attention').set_state(noise)
 
     word_input = np.zeros((batch_size, 1))
     result_probs = np.zeros(batch_size)
@@ -96,10 +95,7 @@ def generative_predict_beam(test_model, premises, noise_batch, class_indices, re
     probs = None
    
     for i in range(hypo_len):
-        data = [premise, word_input] + ([] if version == 0 else [noise]) +  \
-               [np.zeros((batch_size,1)), class_input]
-        if version == 1 or version == 3 or version == 4 or version == 8 or version ==9:
-            data = data[:4]
+        data = [premise, word_input, noise, np.zeros((batch_size,1))]
         if version == 9:
             data = data[1:]
         preds = core_model.predict_on_batch(data)
@@ -202,7 +198,7 @@ def validate(dev, gen_test, beam_size, hypo_len, samples, noise_size, glove, cmo
         print 'adverse_loss:', val_loss
         res['adverse_loss'] = val_loss
     if diverse:
-        div, _, _ = diversity(dev, gen_test, beam_size, hypo_len, noise_size, 64, 32)
+        div, _, _, _ = diversity(dev, gen_test, beam_size, hypo_len, noise_size, 64, 32)
         res['diversity'] = div
     print
     for val in p.unique_values:
@@ -226,8 +222,9 @@ def diversity(dev, gen_test, beam_size, hypo_len, noise_size, per_premise, sampl
         hypos = []
         unique_words = []
         hypo_list = []
+        premise = dev[0][i]
+        prem_list = set(cut_zeros(list(premise)))        
         while len(hypos) < per_premise:
-            premise = dev[0][i]
             label = np.argmax(dev[2][i])
             words = single_generate(premise, label, gen_test, beam_size, hypo_len, noise_size)
             hypos += [str(ex) for ex in words]
@@ -235,19 +232,24 @@ def diversity(dev, gen_test, beam_size, hypo_len, noise_size, per_premise, sampl
             hypo_list += [set(cut_zeros(list(ex))) for ex in words]
         
         jacks = []  
+        prem_jacks = []
         for u in range(len(hypo_list)):
+            sim_prem = len(hypo_list[u] & prem_list)/float(len(hypo_list[u] | prem_list))
+            prem_jacks.append(sim_prem)
             for v in range(u+1, len(hypo_list)):
                 sim = len(hypo_list[u] & hypo_list[v])/float(len(hypo_list[u] | hypo_list[v]))
                 jacks.append(sim)
-        avg_dist = 1 -  np.mean(jacks)
+        avg_dist_hypo = 1 -  np.mean(jacks)
+        avg_dist_prem = 1 -  np.mean(prem_jacks)
         d = entropy(Counter(hypos).values()) 
         w = entropy(Counter(unique_words).values())
-        p.add(len(hypos), [('diversity', d),('word_entropy', w),('avg_dist', avg_dist)])
+        p.add(len(hypos), [('diversity', d),('word_entropy', w),('avg_dist_hypo', avg_dist_hypo), ('avg_dist_prem', avg_dist_prem)])
     arrd = p.sum_values['diversity']
     arrw = p.sum_values['word_entropy']
-    arrj = p.sum_values['avg_dist']
+    arrj = p.sum_values['avg_dist_hypo']
+    arrp = p.sum_values['avg_dist_prem']
     
-    return arrd[0] / arrd[1], arrw[0] / arrw[1], arrj[0] / arrj[1]
+    return arrd[0] / arrd[1], arrw[0] / arrw[1], arrj[0] / arrj[1],  arrp[0] / arrp[1]
 
 def cut_zeros(list):
     return [a for a in list if a > 0]

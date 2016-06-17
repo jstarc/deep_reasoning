@@ -26,7 +26,7 @@ if __name__ == "__main__":
     div_samples = 32
     augment_file_size = 2 ** 15
     aug_threshold = 0.9
-    thresholds = [0.0, True, aug_threshold]#, 'la0.5', 'lb0.8', 0.6] 
+    thresholds = ['ab0.25'] #[0.0, True, aug_threshold, 'la0.5', 'lb0.8', 0.6, 'aa0.25', 'ab0.25'] 
     epoch_size = (len(train[0]) / batch_size) * batch_size
     dev_sample_size = (len(dev[0]) / batch_size) * batch_size
 
@@ -51,7 +51,13 @@ if __name__ == "__main__":
      
     if method == 'train_class':
        for t in thresholds:
-           aug_train, aug_dev = augment.load_dataset(dir_name, t, len(train[0]), len(dev[0]), wi)
+           if type(t) == str and t[0] == 'a':
+               aug_train, aug_dev = augment.load_dataset(dir_name, True, 2**30, 2**30, wi)
+               aug_dev = aa.filter_adverserial(aug_dev, t, len(dev[0]), dir_name, glove, a_hidden_size)
+               aug_train = aa.filter_adverserial(aug_train, t, len(train[0]), dir_name, glove, a_hidden_size)
+           else:
+               aug_train, aug_dev = augment.load_dataset(dir_name, t, len(train[0]), len(dev[0]), wi)
+           
            aug_cmodel = cm.attention_model(c_hidden_size, glove)
            ca.train(aug_train, aug_dev, aug_cmodel, dir_name + '/threshold' + str(t), batch_size)
 
@@ -75,12 +81,12 @@ if __name__ == "__main__":
         csvf =  open(dir_name + '/eval_gen.csv', 'wb')
         writer = csv.writer(csvf)
         writer.writerow(['threshold', 'class_loss', 'class_entropy', 'class_acc', 'neutr_acc', 
-                         'contr_acc',' ent_acc', 'adverse_acc', 'sent_div', 'word_div'])
+                         'contr_acc',' ent_acc', 'adverse_acc', 'sent_div', 'word_div', 'hypo_dist', 'prem_dist'])
        
         gtrain = gm.gen_train(len(train[0]), g_hidden_size, latent_size, glove, hypo_len, version)
         gtrain.load_weights(dir_name + '/weights.hdf5')
         gtest = gm.gen_test(gtrain, glove, batch_size)
-        sent_div, word_div, jack_dist = ga.diversity(dev, gtest, beam_size, hypo_len,
+        sent_div, word_div, hypo_dist, prem_dist = ga.diversity(dev, gtest, beam_size, hypo_len,
                                                         latent_size, div_per_premise, div_samples)
  
         for t in thresholds:
@@ -95,7 +101,7 @@ if __name__ == "__main__":
             ent_acc = np.mean(np.argmax(preds[aug_dev[2][:,2] == 1], axis = 1) == 2)
             adverse_acc = aa.adverse_model_validate(dir_name, dev, aug_dev, glove, a_hidden_size)
             row = [t, closs, centropy, cacc, neutr_acc, contr_acc, ent_acc, adverse_acc,
-                   sent_div, word_div, jack_dist]
+                   sent_div, word_div, hypo_dist, prem_dist]
             str_row = ["%0.4f" % stat for stat in row]
             writer.writerow(str_row)           
                              

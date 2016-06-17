@@ -91,3 +91,35 @@ def adverse_model_validate(model_dir, dev, aug_dev, glove, dim):
     preds_aug =  discriminator.predict(aug_dev[1])
 
     return np.mean(preds_orig > preds_aug)
+
+def init_adverserial_threshold_function(target_dir, ad_threshold, glove, dim, wi, hypo_len):
+    ### too slow to use
+    discriminator = am.discriminator(glove, dim)
+    discriminator.load_weights(target_dir + '/adverse.weights')
+    padding_example = (['a'] * 25, ['a'] * 15, 'entailment')
+    def t_func(example, loss, cpred, ctrue):
+        if not ctrue:
+            return False
+        vec_ex = load_data.prepare_split_vec_dataset([example, padding_example], wi.index, True)
+        pred = discriminator.predict(vec_ex[1][:1])[0][0]
+        return pred > ad_threshold
+    return t_func
+
+
+def filter_adverserial(dataset, threshold, target_size, target_dir, glove, dim):
+    arg = threshold[1] == 'b' 
+    num = float(threshold[2:])
+    label_size = target_size / 3
+    discriminator = am.discriminator(glove, dim)
+    discriminator.load_weights(target_dir + '/adverse.weights')
+    ad_preds = discriminator.predict(dataset[1], verbose = 1)[:,0]
+    indices =  (ad_preds < num) if arg else (ad_preds > num)
+    final_indices = []
+    for l in range(3):
+        label_args = dataset[2][:, l] == 1
+        final_indices += list(np.where(indices * label_args)[0][:label_size])
+    ind = np.sort(final_indices)
+    return (dataset[0][ind], dataset[1][ind], dataset[2][ind])
+        
+        
+        

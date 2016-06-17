@@ -32,46 +32,26 @@ def gen_train(noise_examples, hidden_size, noise_dim, glove, hypo_len, version):
     premise_layer = LSTM(output_dim=hidden_size, return_sequences=True, 
                             inner_activation='sigmoid', name='premise')(prem_embeddings)
     
-    if version == 1 or version == 3 or version == 4 or version == 8:
-        hypo_layer = LSTM(output_dim=hidden_size, return_sequences=True, 
+    hypo_layer = LSTM(output_dim=hidden_size, return_sequences=True, 
                             inner_activation='sigmoid', name='hypo')(hypo_embeddings)
-    elif version == 0 or version == 2 or version == 5:
-        pre_hypo_layer = LSTM(output_dim=hidden_size - 3, return_sequences=True, 
-                            inner_activation='sigmoid', name='hypo')(hypo_embeddings)
-        class_repeat = RepeatVector(hypo_len + 1)(class_input)
-        hypo_layer = merge([pre_hypo_layer, class_repeat], mode='concat')
-    
-    if version == 0:
-        attention = LstmAttentionLayer(output_dim=hidden_size, return_sequences=True,
-                        feed_state = False, name='attention') ([hypo_layer, premise_layer])
-    else:
-        noise_layer = Embedding(noise_examples, noise_dim, 
+    noise_layer = Embedding(noise_examples, noise_dim, 
                             input_length = 1, name='noise_embeddings')(noise_input)
-        flat_noise = Flatten(name='noise_flatten')(noise_layer)
-        if version == 1:
-            creative = merge([class_input, flat_noise], mode='concat', name = 'cmerge')
-        elif version == 2 or version == 3:
-            creative = flat_noise
-        elif version == 4:
-            class_sig = Dense(noise_dim, name = 'class_sig')(class_input)
-            creative = merge([flat_noise, class_sig], mode = 'mul', name='cmerge')
-        elif version == 5:
-            creative = Dense(hidden_size, name = 'class_exp')(flat_noise)
-        elif version == 8:
-            merged = merge([class_input, flat_noise], mode='concat')
-            creative = Dense(hidden_size, name = 'cmerge')(merged)
+    flat_noise = Flatten(name='noise_flatten')(noise_layer)
+    if version == 8:
+        create_input = merge([class_input, flat_noise], mode='concat')
+    if version == 5:
+        create_input = flat_noise
 
-        attention = LstmAttentionLayer(output_dim=hidden_size, return_sequences=True, 
-                        feed_state = True, name='attention') ([hypo_layer, premise_layer, creative])
+    creative = Dense(hidden_size, name = 'cmerge')(create_input)
+    attention = LstmAttentionLayer(output_dim=hidden_size, return_sequences=True, 
+                    feed_state = True, name='attention') ([hypo_layer, premise_layer, creative])
                
     hs = HierarchicalSoftmax(len(glove), trainable = True, name='hs')([attention, train_input])
     
     inputs = [prem_input, hypo_input, noise_input, train_input, class_input]
-    if version == 3:
-        inputs = inputs[:4]
-    elif version == 0:
-        inputs = inputs[0:2] + inputs[3:5]
-    
+    if version == 5:
+        inputs = inputs[:4]    
+
     model_name = 'version' + str(version)
     model = Model(input=inputs, output=hs, name = model_name)
     model.compile(loss=hs_categorical_crossentropy, optimizer='adam')              
@@ -156,26 +136,17 @@ def gen_test(train_model, glove, batch_size):
     
     hypo_embeddings = make_fixed_embeddings(glove, 1)(hypo_input) 
     
-    if version == 1 or version == 3 or version == 4 or version == 8:
-        hypo_layer = LSTM(output_dim = hidden_size, return_sequences=True, stateful = True, unroll=True,
+    hypo_layer = LSTM(output_dim = hidden_size, return_sequences=True, stateful = True, unroll=True,
             trainable = False, inner_activation='sigmoid', name='hypo')(hypo_embeddings)
-    elif version == 0 or version == 2 or version == 5 or version == 6 or version == 7:
-        pre_hypo_layer = LSTM(output_dim=hidden_size - 3, return_sequences=True, stateful = True, 
-            trainable = False, inner_activation='sigmoid', name='hypo')(hypo_embeddings)
-        class_input = Input(batch_shape=(64, 3,), name='class_input')
-        class_repeat = RepeatVector(1)(class_input)
-        hypo_layer = merge([pre_hypo_layer, class_repeat], mode='concat')     
     
-    att_inputs = [hypo_layer, premise_input] if version == 0 else [hypo_layer, premise_input, creative_input] 
+    att_inputs = [hypo_layer, premise_input] if version == 5 else [hypo_layer, premise_input, creative_input] 
     attention = LstmAttentionLayer(output_dim=hidden_size, return_sequences=True, stateful = True, unroll =True,
         trainable = False, feed_state = False, name='attention') \
             (att_inputs)
 
     hs = HierarchicalSoftmax(len(glove), trainable = False, name ='hs')([attention, train_input])
     
-    inputs = [premise_input, hypo_input] + ([] if version == 0 else [creative_input]) + [train_input]
-    if version == 0 or version == 2 or version == 5 or version == 6 or version == 7:
-        inputs.append(class_input)
+    inputs = [premise_input, hypo_input, creative_input, train_input]
     outputs = [hs]    
          
     model = Model(input=inputs, output=outputs, name=train_model.name)
@@ -186,23 +157,21 @@ def gen_test(train_model, glove, batch_size):
     func_premise = theano.function([train_model.get_layer('prem_input').input],
                                     train_model.get_layer('premise').output, 
                                     allow_input_downcast=True)
-    if version == 1 or version == 4 or version == 8:   
-        f_inputs = [train_model.get_layer('noise_embeddings').output,
-                    train_model.get_layer('class_input').input]
+    if version == 5 or version == 8:   
+        f_inputs = [train_model.get_layer('noise_embeddings').output]
+        if version == 8:
+            f_inputs += [train_model.get_layer('class_input').input]
+       
         func_noise = theano.function(f_inputs, train_model.get_layer('cmerge').output, 
                                      allow_input_downcast=True)                            
-    elif version == 2 or version == 3 or version == 5 or version >= 6:
-        if version >= 6:
-           noise_input = train_model.get_layer('expansion').get_input_at(0)
-        else:
-           noise_input = train_model.get_layer('noise_flatten').get_input_at(0)
-        noise_output = train_model.get_layer('attention').get_input_at(0)[2]
+    elif version == 6 or version == 7:
+        noise_input = train_model.get_layer('reduction').output
+        class_input = train_model.get_layer('class_input').input
+        noise_output = train_model.get_layer('expansion').output
          
-        func_noise = theano.function([noise_input], noise_output, 
-                                      allow_input_downcast=True) 
+        func_noise = theano.function([noise_input, class_input], noise_output, 
+                                      allow_input_downcast=True, on_unused_input='ignore') 
               
-    elif version == 0:
-        func_noise = None
     return model, func_premise, func_noise
 
 def update_gen_weights(test_model, train_model):
@@ -218,9 +187,6 @@ def cc_loss(y_true, y_pred):
     return K.mean(K.categorical_crossentropy(y_pred, y_true))
 
 
-
-
-
 def autoe_train(hidden_size, noise_dim, glove, hypo_len, version):
 
     prem_input = Input(shape=(None,), dtype='int32', name='prem_input')
@@ -230,16 +196,15 @@ def autoe_train(hidden_size, noise_dim, glove, hypo_len, version):
 
     prem_embeddings = make_fixed_embeddings(glove, None)(prem_input)
     hypo_embeddings = make_fixed_embeddings(glove, hypo_len + 1)(hypo_input)
-    premise_layer = LSTM(output_dim=hidden_size, return_sequences=True,
-                            inner_activation='sigmoid', name='premise')(prem_embeddings)
+    premise_encoder = LSTM(output_dim=hidden_size, return_sequences=True,
+                            inner_activation='sigmoid', name='premise_encoder')(prem_embeddings)
 
-    pre_hypo_layer = LSTM(output_dim=hidden_size - 3, return_sequences=True,
-                            inner_activation='sigmoid', name='hypo')(hypo_embeddings)
-    class_repeat = RepeatVector(hypo_len + 1)(class_input)
-    hypo_layer = merge([pre_hypo_layer, class_repeat], mode='concat')
+    hypo_encoder = LSTM(output_dim=hidden_size, return_sequences=True,
+                            inner_activation='sigmoid', name='hypo_encoder')(hypo_embeddings)
+    class_encoder = Dense(hidden_size, activation='tanh')(class_input)
 
     encoder = LstmAttentionLayer(output_dim=hidden_size, return_sequences=False,
-                  feed_state = False, name='encoder') ([hypo_layer, premise_layer])
+                  feed_state = True, name='encoder') ([hypo_encoder, premise_encoder, class_encoder])
     if version == 6:
         reduction = Dense(noise_dim, name='reduction', activation='tanh')(encoder)
     elif version == 7:
@@ -257,9 +222,15 @@ def autoe_train(hidden_size, noise_dim, glove, hypo_len, version):
             return - 0.5 * K.mean(1 + z_log_sigma - K.square(z_mean) - K.exp(z_log_sigma), axis=-1)    
         vae = Lambda(vae_loss, output_shape=lambda sh: (sh[0][0], 1,), name = 'vae_output')([z_mean, z_log_sigma])
 
-    creative = Dense(hidden_size, name = 'expansion', activation ='tanh')(reduction)
+    merged = merge([class_input, reduction], mode='concat')
+    creative = Dense(hidden_size, name = 'expansion', activation ='tanh')(merged)
+    premise_decoder = LSTM(output_dim=hidden_size, return_sequences=True,
+                            inner_activation='sigmoid', name='premise')(prem_embeddings)
+    
+    hypo_decoder = LSTM(output_dim=hidden_size, return_sequences=True,
+                            inner_activation='sigmoid', name='hypo')(hypo_embeddings)
     attention = LstmAttentionLayer(output_dim=hidden_size, return_sequences=True,
-                     feed_state = True, name='attention') ([hypo_layer, premise_layer, creative])
+                     feed_state = True, name='attention') ([hypo_decoder, premise_decoder, creative])
 
     hs = HierarchicalSoftmax(len(glove), trainable = True, name='hs')([attention, train_input])
 
