@@ -5,6 +5,9 @@ from keras.utils.generic_utils import Progbar
 from load_data import load_word_indices
 from keras.preprocessing.sequence import pad_sequences
 
+import pandas as pa
+import augment
+
 def test_points(premises, labels, noises, gtest, cmodel, hypo_len):
     p = Progbar(len(premises))
     hypos = []
@@ -41,3 +44,36 @@ def load_premise(string, wi, prem_len = 25):
     tokens = load_word_indices(tokens, wi.index)
     return pad_sequences([tokens], maxlen = prem_len, padding = 'pre')[0]
     
+
+def find_true_examples():
+    dims = [2, 8, 147]
+    final_premises = set()
+    subset = []
+    for d in dims:
+         data = pa.read_csv('models/real8-150-' + str(d) + '/dev1')
+         data = data[data['ctrue']]
+         neutr = data[data['label'] == 'neutral']
+         contr = data[data['label'] == 'contradiction']
+         entail = data[data['label'] == 'entailment']
+         subset += [neutr, contr, entail]
+         premises = set(neutr['premise']) &  set(contr['premise']) &  set(entail['premise'])
+         if len(final_premises) == 0:
+             final_premises = premises
+         else:
+             final_premises &= premises
+    final_premises = list(final_premises)
+
+    with open('results/examples.txt', 'w') as fi:
+        for i in range(len(final_premises)):
+            premise = final_premises[i]
+            fi.write(premise + '\n')
+            for j in range(len(subset)):
+                filtered = subset[j][subset[j]['premise'] == premise]
+                for f in range(len(filtered)):
+                    hypo = filtered['hypo'].iloc[f]
+                    label = filtered['label'].iloc[f][:4]
+                    fi.write(label + '\t'  + hypo + '\n')
+        fi.write('\n')
+    
+    
+  
