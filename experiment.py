@@ -9,6 +9,7 @@ import augment
 import csv
 import glob
 import numpy as np
+import os.path
 
 if __name__ == "__main__":
     train, dev, test, wi, glove, prem_len, hypo_len = load_data.main()
@@ -26,7 +27,7 @@ if __name__ == "__main__":
     div_samples = 32
     augment_file_size = 2 ** 15
     aug_threshold = 0.9
-    thresholds = ['ab0.25'] #[0.0, True, aug_threshold, 'la0.5', 'lb0.8', 0.6, 'aa0.25', 'ab0.25'] 
+    thresholds = [0.0, True, aug_threshold, 0.3, 0.6, 'la0.5', 'lb0.8', 'aa0.25', 'ab0.25'] 
     epoch_size = (len(train[0]) / batch_size) * batch_size
     dev_sample_size = (len(dev[0]) / batch_size) * batch_size
 
@@ -71,17 +72,19 @@ if __name__ == "__main__":
         writer.writerow(['threshold', 'loss_dev', 'acc_dev', 'loss_test', 'acc_test'])
         aug_cmodel = cm.attention_model(c_hidden_size, glove)
         for t in thresholds:
-            aug_cmodel.load_weights(dir_name + '/threshold' + str(t) + '/model.weights')
-            loss_dev, acc_dev, = aug_cmodel.evaluate([dev[0], dev[1]], dev[2])
-            loss_test, acc_test = aug_cmodel.evaluate([test[0], test[1]], test[2])
-            writer.writerow([str(t), "%0.4f" % loss_dev, "%0.4f" % acc_dev,
-                             "%0.4f" % loss_test, "%0.4f" % acc_test])
+            filename = dir_name + '/threshold' + str(t) + '/model.weights'
+            if os.path.isfile(filename):
+                aug_cmodel.load_weights(filename)
+                loss_dev, acc_dev, = aug_cmodel.evaluate([dev[0], dev[1]], dev[2])
+                loss_test, acc_test = aug_cmodel.evaluate([test[0], test[1]], test[2])
+                writer.writerow([str(t), "%0.4f" % loss_dev, "%0.4f" % acc_dev,
+                                 "%0.4f" % loss_test, "%0.4f" % acc_test])
 
     if method == 'evaluate_gen':
         csvf =  open(dir_name + '/eval_gen.csv', 'wb')
         writer = csv.writer(csvf)
         writer.writerow(['threshold', 'class_loss', 'class_entropy', 'class_acc', 'neutr_acc', 
-                         'contr_acc',' ent_acc', 'adverse_acc', 'sent_div', 'word_div', 'hypo_dist', 'prem_dist'])
+                         'contr_acc','ent_acc', 'adverse_acc', 'sent_div', 'word_div', 'hypo_dist', 'prem_dist'])
        
         gtrain = gm.gen_train(len(train[0]), g_hidden_size, latent_size, glove, hypo_len, version)
         gtrain.load_weights(dir_name + '/weights.hdf5')
