@@ -1,0 +1,2 @@
+threshold,loss_dev,acc_dev,loss_test,acc_test
+True,0.6744,0.7897,0.7097,0.7857
