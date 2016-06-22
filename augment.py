@@ -62,7 +62,6 @@ def deserialize_pregenerated(target_dir, prefix, wi, threshold, dataset_len):
                     cpreds.append(cpred)
                     ctrues.append(ctrue)
                     counts[label] += 1
-            
                 if (counts - label_len == 0).all():
                     finish = True
                     break
@@ -77,7 +76,7 @@ def pass_threshold(example, loss, cpred, ctrue, threshold):
     elif type(threshold) == str:
         arg = threshold[:2]
         num = float(threshold[2:])
-        return ctrue & (arg == 'la' == loss > num)
+        return ctrue & ((arg == 'la') == (loss > num))
     elif hasattr(threshold, '__call__'):
         return threshold(example, loss, cpred, ctrue)
     else:

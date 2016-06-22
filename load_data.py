@@ -3,6 +3,7 @@ import json
 import sys
 sys.path.append('../keras')
 from keras.preprocessing.sequence import pad_sequences
+import glob
 
 DELIMITER = "--"
 LABEL_LIST = ['neutral','contradiction','entailment']
@@ -312,6 +313,13 @@ def cut_dataset(data, limit):
 def filter_label(data, label):
     indices = np.where(data[2][:,label])[0]
     return (data[0][indices], data[1][indices], data[2][indices])
+
+def load_thresholds(dir_name):
+    threshold_dirs = glob.glob(dir_name + '/threshold*')
+    thresholds = [d.split('threshold')[1] for d in threshold_dirs]
+    thresholds = [t for t in thresholds if (t[0] != 'a')]
+    thresholds = [True if t == 'True' else (float(t) if t[0] == '0'  else t) for t in thresholds]
+    return thresholds
 
 def main():
     train, dev, test = load_all_snli_datasets('data/snli_1.0/')

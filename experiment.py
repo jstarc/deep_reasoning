@@ -27,7 +27,7 @@ if __name__ == "__main__":
     div_samples = 32
     augment_file_size = 2 ** 15
     aug_threshold = 0.9
-    thresholds = [0.0, True, aug_threshold, 0.3, 0.6, 'la0.5', 'lb0.8', 'aa0.25', 'ab0.25'] 
+    thresholds = [0.6]#[0.0, True, aug_threshold, 0.3, 0.6, 'la0.5', 'lb0.8', 'aa0.25', 'ab0.25'] 
     epoch_size = (len(train[0]) / batch_size) * batch_size
     dev_sample_size = (len(dev[0]) / batch_size) * batch_size
 
@@ -81,10 +81,11 @@ if __name__ == "__main__":
                                  "%0.4f" % loss_test, "%0.4f" % acc_test])
 
     if method == 'evaluate_gen':
-        csvf =  open(dir_name + '/eval_gen.csv', 'wb')
+        csvf =  open(dir_name + '/total_eval.csv', 'wb')
         writer = csv.writer(csvf)
         writer.writerow(['threshold', 'class_loss', 'class_entropy', 'class_acc', 'neutr_acc', 
-                         'contr_acc','ent_acc', 'adverse_acc', 'sent_div', 'word_div', 'hypo_dist', 'prem_dist'])
+                         'contr_acc','ent_acc', 'adverse_acc', 'sent_div', 'word_div', 'hypo_dist', 'prem_dist', 
+                          'loss_dev', 'acc_dev', 'loss_test', 'acc_test', 'aug_dev_acc', 'avg_loss'])
        
         gtrain = gm.gen_train(len(train[0]), g_hidden_size, latent_size, glove, hypo_len, version)
         gtrain.load_weights(dir_name + '/weights.hdf5')
@@ -92,7 +93,10 @@ if __name__ == "__main__":
         sent_div, word_div, hypo_dist, prem_dist = ga.diversity(dev, gtest, beam_size, hypo_len,
                                                         latent_size, div_per_premise, div_samples)
  
-        for t in thresholds:
+        rec_thresholds = load_data.load_thresholds(dir_name)
+        aug_cmodel = cm.attention_model(c_hidden_size, glove)
+        for t in rec_thresholds:
+            print t
             aug_train, aug_dev = augment.load_dataset(dir_name, t, len(train[0]), len(dev[0]), wi)
             
             preds = cmodel.predict(list(aug_dev[:2]))
@@ -103,9 +107,18 @@ if __name__ == "__main__":
             contr_acc = np.mean(np.argmax(preds[aug_dev[2][:,1] == 1], axis = 1) == 1)
             ent_acc = np.mean(np.argmax(preds[aug_dev[2][:,2] == 1], axis = 1) == 2)
             adverse_acc = aa.adverse_model_validate(dir_name, dev, aug_dev, glove, a_hidden_size)
+            
+            filename = dir_name + '/threshold' + str(t) + '/model.weights'
+            if os.path.isfile(filename):
+                aug_cmodel.load_weights(filename)
+                loss_dev, acc_dev, = aug_cmodel.evaluate([dev[0], dev[1]], dev[2])
+                loss_test, acc_test = aug_cmodel.evaluate([test[0], test[1]], test[2])
+                aug_dev_loss, aug_dev_acc = aug_cmodel.evaluate([aug_dev[0], aug_dev[1]], aug_dev[2])
+            avg_loss = np.mean(aug_dev[3])
             row = [t, closs, centropy, cacc, neutr_acc, contr_acc, ent_acc, adverse_acc,
-                   sent_div, word_div, hypo_dist, prem_dist]
-            str_row = ["%0.4f" % stat for stat in row]
+                   sent_div, word_div, hypo_dist, prem_dist,
+                   loss_dev, acc_dev, loss_test, acc_test, aug_dev_acc, avg_loss]
+            str_row = [str(t)] + ["%0.4f" % stat for stat in row[1:]]
             writer.writerow(str_row)           
-                             
+
             
