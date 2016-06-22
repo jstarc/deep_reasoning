@@ -249,3 +249,28 @@ def autoe_train(hidden_size, noise_dim, glove, hypo_len, version):
     return model
 
 
+def count_params(model, explain = False):
+    params = {}
+    params['total'] = model.count_params()
+    params['non_trainable'] = 0
+    params['trainable'] = 0
+    params['noise_embeddings'] = 0
+    params['hs'] = 0
+    for layer in model.layers:
+        l_params = layer.count_params()
+        if l_params > 0:
+            if layer.trainable:
+                if layer.name == 'hs':
+                    params['hs'] += l_params
+                elif layer.name == 'noise_embeddings':
+                    params['noise_embeddings'] += l_params
+                else:
+                    params['trainable'] += l_params
+            else:
+                params['non_trainable'] += l_params
+            if explain:
+                print layer.name, l_params
+
+    for k in params:
+        params[k] = int(round(params[k] / 1000.0))
+    return params

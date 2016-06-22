@@ -83,13 +83,16 @@ if __name__ == "__main__":
     if method == 'evaluate_gen':
         csvf =  open(dir_name + '/total_eval.csv', 'wb')
         writer = csv.writer(csvf)
-        writer.writerow(['threshold', 'class_loss', 'class_entropy', 'class_acc', 'neutr_acc', 
+        writer.writerow(['threshold', 'total_params', 'atrain_params', 'class_loss', 'class_entropy', 'class_acc', 'neutr_acc', 
                          'contr_acc','ent_acc', 'adverse_acc', 'sent_div', 'word_div', 'hypo_dist', 'prem_dist', 
                           'loss_dev', 'acc_dev', 'loss_test', 'acc_test', 'aug_dev_acc', 'avg_loss'])
        
         gtrain = gm.gen_train(len(train[0]), g_hidden_size, latent_size, glove, hypo_len, version)
         gtrain.load_weights(dir_name + '/weights.hdf5')
         gtest = gm.gen_test(gtrain, glove, batch_size)
+        params = gm.count_params(gtrain)
+        tot_par = params['total'] - params['non_trainable']
+        atrain_par = params['trainable']
         sent_div, word_div, hypo_dist, prem_dist = ga.diversity(dev, gtest, beam_size, hypo_len,
                                                         latent_size, div_per_premise, div_samples)
  
@@ -115,7 +118,7 @@ if __name__ == "__main__":
                 loss_test, acc_test = aug_cmodel.evaluate([test[0], test[1]], test[2])
                 aug_dev_loss, aug_dev_acc = aug_cmodel.evaluate([aug_dev[0], aug_dev[1]], aug_dev[2])
             avg_loss = np.mean(aug_dev[3])
-            row = [t, closs, centropy, cacc, neutr_acc, contr_acc, ent_acc, adverse_acc,
+            row = [t, tot_par, atrain_par, closs, centropy, cacc, neutr_acc, contr_acc, ent_acc, adverse_acc,
                    sent_div, word_div, hypo_dist, prem_dist,
                    loss_dev, acc_dev, loss_test, acc_test, aug_dev_acc, avg_loss]
             str_row = [str(t)] + ["%0.4f" % stat for stat in row[1:]]
