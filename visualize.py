@@ -39,23 +39,23 @@ def print_hypos(premise, label, gen_test, beam_size, hypo_len, noise_size, wi):
     for h in words:
         print wi.print_seq(h)
 
-def load_premise(string, wi, prem_len = 25):
+def load_sentence(string, wi, len = 25):
     tokens = string.split()
     tokens = load_word_indices(tokens, wi.index)
     return pad_sequences([tokens], maxlen = prem_len, padding = 'pre')[0]
     
 
 def find_true_examples():
-    dims = [2, 8, 147]
+    models = ['8-150-2', '8-150-4', '8-150-8', '8-150-16', '8-150-32', '8-150-147', '6-150-8', '7-150-8' ,'9-226-8']
     final_premises = set()
-    subset = []
-    for d in dims:
-         data = pa.read_csv('models/real8-150-' + str(d) + '/dev1')
+    subset = {}
+    for model in models:
+         data = pa.read_csv('models/real' + model + '/dev1')
          data = data[data['ctrue']]
          neutr = data[data['label'] == 'neutral']
          contr = data[data['label'] == 'contradiction']
          entail = data[data['label'] == 'entailment']
-         subset += [neutr, contr, entail]
+         subset[model] = [neutr, contr, entail]
          premises = set(neutr['premise']) &  set(contr['premise']) &  set(entail['premise'])
          if len(final_premises) == 0:
              final_premises = premises
@@ -63,16 +63,18 @@ def find_true_examples():
              final_premises &= premises
     final_premises = list(final_premises)
 
-    with open('results/examples.txt', 'w') as fi:
+    with open('results/ext_examples.txt', 'w') as fi:
         for i in range(len(final_premises)):
             premise = final_premises[i]
             fi.write(premise + '\n')
-            for j in range(len(subset)):
-                filtered = subset[j][subset[j]['premise'] == premise]
-                for f in range(len(filtered)):
-                    hypo = filtered['hypo'].iloc[f]
-                    label = filtered['label'].iloc[f][:4]
-                    fi.write(label + '\t'  + hypo + '\n')
+            for m in models:
+                fi.write(m + '\n')
+                for l in range(3):
+                    filtered = subset[m][l][subset[m][l]['premise'] == premise]
+                    for f in range(len(filtered)):
+                        hypo = filtered['hypo'].iloc[f]
+                        label = filtered['label'].iloc[f][:4]
+                        fi.write(label + '\t'  + hypo + '\n')
         fi.write('\n')
     
     
