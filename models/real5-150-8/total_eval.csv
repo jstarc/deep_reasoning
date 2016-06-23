@@ -1,0 +1,2 @@
+threshold,total_params,atrain_params,class_loss,class_entropy,class_acc,neutr_acc,contr_acc,ent_acc,adverse_acc,sent_div,word_div,hypo_dist,prem_dist,loss_dev,acc_dev,loss_test,acc_test,aug_dev_acc,avg_loss
+True,10127.0000,581.0000,0.2433,0.4841,1.0000,1.0000,1.0000,1.0000,0.8577,4.1514,3.7708,0.7935,0.7975,0.6744,0.7897,0.7097,0.7857,0.8704,0.6911
