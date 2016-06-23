@@ -53,17 +53,17 @@ if __name__ == "__main__":
     if method == 'train_class':
        for t in thresholds:
            if type(t) == str and t[0] == 'a':
-               aug_train, aug_dev = augment.load_dataset(dir_name, True, 2**30, 2**30, wi)
+               aug_train, aug_dev = augment.load_dataset(dir_name, True, 2**30, 2**30, wi, prem_len, hypo_len)
                aug_dev = aa.filter_adverserial(aug_dev, t, len(dev[0]), dir_name, glove, a_hidden_size)
                aug_train = aa.filter_adverserial(aug_train, t, len(train[0]), dir_name, glove, a_hidden_size)
            else:
-               aug_train, aug_dev = augment.load_dataset(dir_name, t, len(train[0]), len(dev[0]), wi)
+               aug_train, aug_dev = augment.load_dataset(dir_name, t, len(train[0]), len(dev[0]), wi, prem_len, hypo_len)
            
            aug_cmodel = cm.attention_model(c_hidden_size, glove)
            ca.train(aug_train, aug_dev, aug_cmodel, dir_name + '/threshold' + str(t), batch_size)
 
     if method == 'train_adverse':
-        aug_train, aug_dev = augment.load_dataset(dir_name, 0.0, len(train[0]), len(dev[0]), wi)
+        aug_train, aug_dev = augment.load_dataset(dir_name, 0.0, len(train[0]), len(dev[0]), wi, prem_len, hypo_len)
         aa.adverse_model_train(dir_name, train, aug_train, dev, aug_dev, a_hidden_size, glove)
       
     if method == 'evaluate_class':
@@ -100,7 +100,7 @@ if __name__ == "__main__":
         aug_cmodel = cm.attention_model(c_hidden_size, glove)
         for t in rec_thresholds:
             print t
-            aug_train, aug_dev = augment.load_dataset(dir_name, t, len(train[0]), len(dev[0]), wi)
+            aug_train, aug_dev = augment.load_dataset(dir_name, t, len(train[0]), len(dev[0]), wi, prem_len, hypo_len)
             
             preds = cmodel.predict(list(aug_dev[:2]))
             centropy = np.mean(-np.sum(preds * np.log(preds), axis=1))

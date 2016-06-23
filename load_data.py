@@ -96,7 +96,7 @@ def prepare_vec_dataset(dataset, glove):
     one_hot_y[np.arange(len(y)), y] = 1
     return np.array(X), one_hot_y
     
-def prepare_split_vec_dataset(dataset, word_index, padding = True):
+def prepare_split_vec_dataset(dataset, word_index, padding = True, prem_len = None, hypo_len = None):
     P = []
     H = []
     y = []
@@ -111,8 +111,8 @@ def prepare_split_vec_dataset(dataset, word_index, padding = True):
     one_hot_y = np.zeros((len(y), len(LABEL_LIST)))
     one_hot_y[np.arange(len(y)), y] = 1
     if pad_sequences:
-        P = pad_sequences(P, padding='pre')
-        H = pad_sequences(H, padding='post')
+        P = pad_sequences(P, prem_len, padding='pre')
+        H = pad_sequences(H, hypo_len, padding='post')
     return np.array(P), np.array(H), one_hot_y
 
     
@@ -340,9 +340,9 @@ def main():
     wi = WordIndex(glove)
     print 'Word vec preparation finished'
     
-    train = prepare_split_vec_dataset(train, wi.index, True)
-    dev = prepare_split_vec_dataset(dev, wi.index, True)
-    test = prepare_split_vec_dataset(test_new, wi.index, True)
+    train = prepare_split_vec_dataset(train, wi.index, True, prem_len, hypo_len)
+    dev = prepare_split_vec_dataset(dev, wi.index, True, prem_len, hypo_len)
+    test = prepare_split_vec_dataset(test_new, wi.index, True, prem_len, hypo_len)
     
     print 'Dataset created'
     return train, dev, test, wi, glove, prem_len, hypo_len    

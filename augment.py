@@ -39,7 +39,7 @@ def new_generate_save(dataset, target_dir, samples, gen_test, beam_size, hypo_le
         counter += 1
         print 'Iteration', counter, thresh_count / label_size
 
-def deserialize_pregenerated(target_dir, prefix, wi, threshold, dataset_len):
+def deserialize_pregenerated(target_dir, prefix, wi, threshold, dataset_len, prem_len, hypo_len):
     import csv
     file_list = glob.glob(target_dir + '/'+ prefix + '*')
     dataset ,losses, cpreds, ctrues = [],[],[],[]
@@ -68,7 +68,7 @@ def deserialize_pregenerated(target_dir, prefix, wi, threshold, dataset_len):
                               
     from load_data import prepare_split_vec_dataset as prep_dataset
     
-    return prep_dataset(dataset, wi.index, True) + (np.array(losses), np.array(cpreds), np.array(ctrues))
+    return prep_dataset(dataset, wi.index, True, prem_len, hypo_len) + (np.array(losses), np.array(cpreds), np.array(ctrues))
         
 def pass_threshold(example, loss, cpred, ctrue, threshold):
     if type(threshold) == bool:
@@ -135,9 +135,9 @@ def test_gen_models(train, gen_train, gen_test, gen_folder, discriminator, class
         print m
         print means
 
-def load_dataset(target_dir, threshold, train_size, dev_size, wi):
-    aug_dev = deserialize_pregenerated(target_dir, 'dev', wi, threshold, dev_size)
-    aug_train = deserialize_pregenerated(target_dir, 'train', wi, threshold, train_size)
+def load_dataset(target_dir, threshold, train_size, dev_size, wi, prem_len, hypo_len):
+    aug_dev = deserialize_pregenerated(target_dir, 'dev', wi, threshold, dev_size, prem_len, hypo_len)
+    aug_train = deserialize_pregenerated(target_dir, 'train', wi, threshold, train_size, prem_len, hypo_len)
     return aug_train, aug_dev
             
         
