@@ -52,28 +52,30 @@ def make_train_batch(orig_batch, word_index, hypo_len):
     return load_data.pad_sequences(X_hypo, maxlen = hypo_len, dim = -1, padding = 'post')
     
 
-def manual_tester(dev, discriminator, generative_model, word_index, batch_size,
-                          hypo_len, target_size, filename):
+def manual_tester(dev, aug_dev, discriminator, word_index, target_size, filename):
     
-    gen = adverse_generator(dev, generative_model, word_index, 0.0, batch_size, hypo_len)
-    count = 0
+    true_ex = 0
     with open(filename+'.hidden', 'w') as h, open(filename+'.revealed', 'w') as r:
-        while count < target_size:
-            batch = next(gen)
-            gen_preds = discriminator.predict_on_batch(batch['gen_hypo'])[0]
-            train_preds = discriminator.predict_on_batch(batch['train_hypo'])[0]
-            for i in range(batch_size):
-                gen_hypo = word_index.print_seq(batch['gen_hypo'][i])
-                train_hypo = word_index.print_seq(batch['train_hypo'][i])
+        indices = np.random.random_integers(0, len(dev[0]) - 1, target_size)
+        for i in indices:
+            gen_ex = np.array([aug_dev[1][i]])
+            org_ex = np.array([dev[1][i]])
+            gen_pred = discriminator.predict(gen_ex)[0][0]
+            train_pred = discriminator.predict(org_ex)[0][0]
+            
+            gen_hypo = word_index.print_seq(aug_dev[1][i])
+            train_hypo = word_index.print_seq(dev[1][i])
                 
-                r_data = [gen_hypo, train_hypo, str(gen_preds[i][0]), str(train_preds[i][0])]
-                r.write("\t".join(r_data) + '\n')
+            r_data = [gen_hypo, train_hypo, str(gen_pred), str(train_pred)]
+            r.write("\t".join(r_data) + '\n')
 
+            h_data = [gen_hypo, train_hypo] if np.random.rand() > 0.5 else [train_hypo, gen_hypo]
+            h.write("\t".join(h_data) + '\n')
+            
+            if train_pred > gen_pred:
+                true_ex += 1
 
-                h_data = [gen_hypo, train_hypo] if np.random.rand() > 0.5 else [train_hypo, gen_hypo]
-                h.write("\t".join(h_data) + '\n')
-            count += batch_size
-                          
+        print true_ex / float(target_size)               
 def adverse_model_train(model_dir, train, aug_train, dev, aug_dev, dim, glove):
     discriminator = am.discriminator(glove, dim)
     ad_model = am.adverse_model(discriminator)
