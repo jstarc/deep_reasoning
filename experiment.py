@@ -27,7 +27,7 @@ if __name__ == "__main__":
     div_samples = 32
     augment_file_size = 2 ** 15
     aug_threshold = 0.9
-    thresholds = [0.6]#[0.0, True, aug_threshold, 0.3, 0.6, 'la0.5', 'lb0.8', 'aa0.25', 'ab0.25'] 
+    thresholds = [0.0, 0.3, 0.6, aug_threshold] #, True, 'la0.5', 'lb0.8', 'aa0.25', 'ab0.25'] 
     epoch_size = (len(train[0]) / batch_size) * batch_size
     dev_sample_size = (len(dev[0]) / batch_size) * batch_size
 

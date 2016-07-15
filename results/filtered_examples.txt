@@ -1,0 +1,54 @@
+a volleyball player hitting a ball on the beach .
+
+neut	a woman is playing volleyball on the beach
+cont	a volleyball player is sitting on the ground.
+enta	someone is playing volleyball.
+
+neut	a woman hits a volleyball ball for her family.
+cont	the person is playing tennis
+enta	a volleyball player is pitching outdoors.
+
+neut	two male players play a game of friends.
+cont	a blonde person is playing cards in the gym.
+enta	a volley hits is relatively on the beach.
+
+a black dog running in the snow by some trees .
+neut	the dog is running to catch a ball.
+cont	a dog is sleeping.
+enta	there is a dog in the snow.
+
+neut	a black dog is trying to find his owner for a stick.
+cont	a white dog is carrying a stick to the moon
+enta	a black dog is playing with trees.
+
+neut	the dog has a golf ball on.
+cont	a dog is going to go swimming.
+enta	the dog is outside looking at the snow.
+
+
+a person throwing a yellow ball in the air.
+neut	someone is playing basketball.
+cont	a person is sleeping in a chair.
+enta	a person is throwing a ball
+
+neut	the person has a yellow ball going to the game.
+cont	the person is sitting in the bleachers.
+enta	a person is playing with a ball.
+
+neut	a person is trying to get home from give a ball.
+cont	a person is reading a bank from london.
+enta	a person is throwing a ball up.
+
+
+two women in bathing suits climb rock piles by the ocean.
+neut	two women are climbing rocks in the ocean on a sunny day.
+cont	the women are playing basketball.
+enta	two women are climbing.
+
+neut	two young women in bathing suits are friends
+cont	two women naked.
+enta	the girls looking at the water.
+
+neut	two women are looking at the lagoon in front of a calm shore.
+cont	two women are gossiping on a sandy beach.
+enta	a group of women are climbing wood in the ocean.
