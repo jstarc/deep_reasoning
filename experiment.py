@@ -4,8 +4,9 @@ import generative_alg as ga
 import classify_models as cm
 import classify_alg as ca
 import adverse_alg as aa
-import sys
 import augment
+
+import sys
 import csv
 import glob
 import numpy as np
@@ -123,5 +124,9 @@ if __name__ == "__main__":
                    loss_dev, acc_dev, loss_test, acc_test, aug_dev_acc, avg_loss]
             str_row = [str(t)] + ["%0.4f" % stat for stat in row[1:]]
             writer.writerow(str_row)           
+    
+    if method == 'load_gen':
+        gtrain = gm.gen_train(len(train[0]), g_hidden_size, latent_size, glove, hypo_len, version)        
+        gtrain.load_weights(dir_name + '/weights.hdf5')
+        gtest = gm.gen_test(gtrain, glove, batch_size)
 
-            
