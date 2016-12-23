@@ -141,3 +141,17 @@ def load_dataset(target_dir, threshold, train_size, dev_size, wi, prem_len, hypo
     return aug_train, aug_dev
             
         
+def print_showcase(dev, examples, per_example, gtest, beam_size, hypo_len, latent_size, cmodel, wi):
+    with open('results/more_examples.txt', 'w') as fi:
+        batch = [new_generate_dataset(dev, examples, gtest, beam_size, hypo_len, latent_size, cmodel) for i in range(per_example)] 
+        for i in range(examples):
+            fi.write(wi.print_seq(dev[0][i]) + '\n')   
+            fi.write(wi.print_seq(dev[1][i]) + '\n')
+            fi.write(load_data.LABEL_LIST[np.argmax(dev[2][i])] + '\n\n')
+        
+            for j in range(len(batch)):
+                if sum(batch[j][5][i] * dev[2][i]) > 0.6:
+                    fi.write( wi.print_seq(batch[j][1][i]) + '\n')
+       
+            fi.write('-----------------------------\n\n\n')
+        

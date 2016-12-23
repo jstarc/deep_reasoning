@@ -1,0 +1,7 @@
+ubuntu@ip-172-31-52-50:~/projects/deep_reasoning$ cat models/combo_model/eval.csv
+threshold,loss_dev,acc_dev,loss_test,acc_test
+0.0,0.4696,0.8282,0.4859,0.8197
+ubuntu@ip-172-31-52-50:~/projects/deep_reasoning$ cat models/cmodel/eval.csv
+threshold,loss_dev,acc_dev,loss_test,acc_test
+0.0,0.4542,0.8230,0.4753,0.8127
+
